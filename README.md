@@ -22,4 +22,5 @@ $stat = $g->git_repo_compare_walk(); //get file-list from repository and downloa
 print_r($stat);
 ```
 
-Result: download files from this repository to <any local path>
+Result: download files from this repository to &lt;any local path&gt;
+
