@@ -1,9 +1,10 @@
 # github-repo-walk
 
 Very simple class for download repository from GitHub.
+
 _It is not wrapper for "git"_.
 
-Example of use:
+### Example of use:
 ```php
 require 'github_repo_walk.php'; // or require 'vendor/autoload.php';
 
@@ -14,9 +15,9 @@ $g = new github_repo_walk(
     'master'
     );
 
-$g->write_enable(); // or skip for compare remote repository with local copy only
+$g->write_enable(); // or skip it for compare remote repository with local copy
 
-$stat = $g->git_repo_compare_walk(); //doing
+$stat = $g->git_repo_compare_walk(); //get file-list from repository and downloading
 
 print_r($stat);
 ```
