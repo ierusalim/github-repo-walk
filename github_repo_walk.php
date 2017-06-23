@@ -165,6 +165,8 @@ class github_repo_walk {
                     $hookName = 'hookNoLocalPath';
                     $this->cnt_not_found++;
                 }
+            } else {
+                throw new Exception("Unknown git-type received: $gitType",999);
             }
             if($this->{$hookName}) {
                 call_user_func(
