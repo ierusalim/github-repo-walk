@@ -1,0 +1,20 @@
+{
+    "name": "ierusalim/github-repo-walk",
+    "description": "Simple class for GitHub repository download or compare",
+    "keywords": ["github","repo","repository","download"],
+    "license": "BSD-3-Clause",
+    "authors": [
+        {
+            "name": "Alex Jer",
+            "email": "alex@ierusalim.com"
+        }
+    ],
+    "require": {
+        "php": ">=5.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "ierusalim\\github-repo-walk\\": ""
+        }
+    }
+}
