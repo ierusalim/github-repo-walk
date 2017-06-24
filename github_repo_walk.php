@@ -297,6 +297,7 @@ class github_repo_walk {
    }
 
    public function check_dir_mkdir($fullPath, $srcDS = DIRECTORY_SEPARATOR) {
+       //Checking path existence and create if not found
        $path_arr=explode($srcDS , $fullPath);
        if(is_dir(implode(DIRECTORY_SEPARATOR,$path_arr))) return true;
        foreach($path_arr as $k=>$sub) {
