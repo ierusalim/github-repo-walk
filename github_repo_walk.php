@@ -6,6 +6,12 @@ class github_repo_walk {
     public $default_git_repo;
     public $default_git_branch;
     public $local_repo_path;
+
+    public $repo_info_obj; //caching for get_repo_info_obj()
+
+    public $rawDownloadMode = true; //true = use raw.githubusercontent.com
+                                    //false = use api.github for download files
+    //api.github not recomended for download files, because rate-limit 60req/hour
     
     public $fn_file_put_contents = false;
     public $fn_mkdir = false;
@@ -34,11 +40,16 @@ class github_repo_walk {
         $local_repo_path,
         $git_user,
         $git_repo,
-        $git_branch='master'
+        $git_branch=NULL //default branch will be taken if not defined here
     ) {
         $this->set_local_path($local_repo_path);
         $this->default_git_user = $git_user;
         $this->default_git_repo = $git_repo;
+        if(is_null($git_branch)) {
+            $repo_info = $this->git_req_repo_info();
+            $git_branch = $repo_info->default_branch;
+        }
+        
         $this->default_git_branch = $git_branch;
         foreach( $this->WalkHookNames as $hookName ) {
             $this->{$hookName} = __CLASS__ . '::fn_hook_default';
@@ -94,6 +105,20 @@ class github_repo_walk {
         return json_decode($raw_json);
     }
     
+    public function git_req_repo_info($git_user = NULL, $git_repo = NULL) {
+        $repo_pair = $this->git_user_repo_pair($git_user, $git_repo);
+        if(
+            !isset($this->repo_info_obj->full_name) ||
+            ($this->repo_info_obj->full_name != $repo_pair)
+        ) {
+            $raw_json = $this->https_get_contents(
+                'https://api.github.com/repos/' . $repo_pair
+            );
+            if(!$raw_json) return false;
+            $this->repo_info_obj = json_decode($raw_json);
+        }
+        return $this->repo_info_obj;
+    }
     public function git_req_branches_list($git_user = NULL, $git_repo = NULL) {
         $raw_json = $this->https_get_contents(
             'https://api.github.com/repos/'
@@ -103,7 +128,7 @@ class github_repo_walk {
         if(!$raw_json) return false;
         return json_decode($raw_json);    
     }
-
+    
     function git_local_file_compare(
         $fullPathFileName, 
         $ExpectedGitSize,
@@ -240,10 +265,20 @@ class github_repo_walk {
             'http' => $http_opt_arr
         ]));
     }
-    
-    public function git_file_download(
-        $srcURL
-    ) {
+    public function git_raw_file_url($fileName) {
+        return 'https://raw.githubusercontent.com/'
+            . $this->git_user_repo_pair() . '/'
+            . $this->default_git_branch . '/'
+            . $fileName;
+    }
+    public function git_raw_file_download( $fileName )
+    {
+        $srcURL = $this->git_raw_file_url($fileName);
+        return $this->https_get_contents( $srcURL );
+    }
+    public function git_api_file_download( $srcURL ) {
+        //ATTN: api not recomended for download files,
+        // because rate-limit 60req/hour. Better use git_raw_file_download
        $api_content = $this->https_get_contents($srcURL);
        if(!$api_content) return false;
        $api_content = json_decode($api_content);
@@ -277,7 +312,11 @@ class github_repo_walk {
             }
             if($have_dir) {
                 if(is_callable($fn_file_put_contents)) {
-                    $fileContent = $this->git_file_download($git_fo->url);
+                    if($this->rawDownloadMode) {
+                        $fileContent = $this->git_raw_file_download($git_fo->path);
+                    } else {
+                        $fileContent = $this->git_api_file_download($git_fo->url);
+                    }
                     //save to file
                     call_user_func(
                         $fn_file_put_contents,
