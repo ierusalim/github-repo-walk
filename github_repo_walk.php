@@ -159,7 +159,9 @@ class github_repo_walk {
                 $gitSize = $git_fo->size;
                 $gitHash = $git_fo->sha;
                 if(is_file($fullPathFileName)) {
-                    if(
+                    if( // ->mode: 100644 - file, 100755 — exe, 120000 — ln.
+                        ($git_fo->mode < 110000) && //for skip links
+                        //compare file by parameters size and hash
                         $this->git_local_file_compare(
                             $fullPathFileName, $gitSize, $gitHash
                         )
