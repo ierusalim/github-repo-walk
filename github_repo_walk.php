@@ -41,24 +41,53 @@ class github_repo_walk {
     public $cnt_found_obj = 0;
     
     public function __construct(
-        $local_repo_path,
-        $git_user,
-        $git_repo = NULL,
-        $git_branch=NULL //default_branch will be taken from repo if not defined
+        $local_repo_path, //local path for working with current git-repository
+        $git_user_and_repo, // user/repo, for example: ierusalim/git-repo-walk
+        $git_branch=NULL //default_branch will be taken from repo-info (if NULL)
     ) {
         //Init hooks to read_only mode
         $this->write_disable();
         
         //set local path to $this->local_repo_path with DS in end
         $this->set_local_path($local_repo_path);
-        
-        //set default git-user
-        $this->default_git_user = $git_user;
-        
-        if(!is_null($git_repo)) {
-            //set git-repository and git_branch
-            $this->set_default_repo($git_repo, $git_branch);
+
+        //set default user and repo
+        $this->set_default_user_repo($git_user_and_repo);
+ 
+        //set default branch if default_repo defined
+        if(!is_null($this->default_git_repo)) {
+            $this->set_default_branch($git_branch);
         }
+    }
+    public function user_repo_pair_divide($git_user_and_repo)
+    {
+        //divide $git_user_and_repo by any divider-char 
+        $i=strcspn($git_user_and_repo,'/\\ ,:;|*#');
+        if($i) {
+            $git_user = substr($git_user_and_repo,0,$i);
+            $git_repo = substr($git_user_and_repo,$i+1);
+        } else {
+            $git_user = NULL;
+            $git_repo = NULL;
+        }
+        return compact('git_user','git_repo');
+    }
+    public function set_default_user_repo($git_user_and_repo)
+    {
+        //divide $git_user_and_repo to $git_user and $git_repo
+        extract($this->user_repo_pair_divide($git_user_and_repo));
+        if (is_null($git_user)) {
+            throw new \Exception("git-user must be specified");
+        }
+        $this->default_git_user = $git_user;
+        $this->default_git_repo = empty($git_repo)? NULL : $git_repo;
+    }
+    public function set_default_branch($git_branch = NULL) {
+        //set default_git_branch if defined or try read default from user/repo
+        if(is_null($git_branch)){
+            $git_branch = $this->read_default_branch_name($this->default_git_repo);
+        }
+        $this->default_git_branch = $git_branch;
     }
     public function write_enable() {
         //set callable functions for mkdir and file_put_contents
@@ -77,27 +106,25 @@ class github_repo_walk {
              dirname($local_repo_path . DIRECTORY_SEPARATOR .'a')
             . DIRECTORY_SEPARATOR;        
     }
-    public function set_default_repo($git_repo, $git_branch = NULL) {
-        $this->default_git_repo = $git_repo;
-        $git_branch = $this->git_repo_default_branch($git_repo);
-        $this->default_git_branch = $git_branch;
-    }
-    public function git_repo_default_branch( $git_repo = NULL ) {
+    public function read_default_branch_name( $git_repo = NULL ) {
         if(is_null($git_repo)) {
             $git_repo = $this->default_git_repo;
         }
         if(is_null($git_repo)) {
-            throw new Exception("GIT-Repository undefined");
+            throw new \Exception("git-repository undefined");
         }
         $git_user = $this->default_git_user;
         if(is_null($git_user)) {
-            throw new Exception("GIT-User undefined");
+            throw new \Exception("git-user undefined");
         }
         
         //try get default branch from cached_user_repo_list_arr
         if(
             isset($this->user_repositories_arr[$git_user])
         ) {
+            if(!isset($this->user_repositories_arr[$git_user][$git_repo])) {
+                throw new \Exception("Not found '$git_repo' in repositories list of git-user '$git_user'");
+            }
             return $this->user_repositories_arr[$git_user][$git_repo]['default_branch'];
         }
         
@@ -189,11 +216,14 @@ class github_repo_walk {
             . '?recursive=1'
         ;
     }
-    public function git_repo_files_list(
-        $git_user = NULL,
-        $git_repo = NULL,
+    public function read_repo_files_list(
+        $git_user_and_repo = NULL,
         $git_branch = NULL     
     ) {
+        extract($this->user_repo_pair_divide($git_user_and_repo));
+        if (is_null($git_branch)) {
+            $git_branch = $this->default_git_branch;
+        }
         $srcURL = $this->git_repo_files_url($git_user, $git_repo, $git_branch);
         if(
             !isset($this->cached_objs_in_repo_list->from_url) ||
@@ -203,6 +233,11 @@ class github_repo_walk {
             if(!$raw_json) return false;
             $this->cached_objs_in_repo_list = json_decode($raw_json);
             $this->cached_objs_in_repo_list->from_url = $srcURL;
+            if(!isset($this->cached_objs_in_repo_list->sha)) {
+                 throw new \Exception("Not found '"
+                    .$this->git_user_repo_pair($git_user, $git_repo)
+                    ."' branch='$git_branch'",404);
+            }
         }
         return $this->cached_objs_in_repo_list;
     }
@@ -248,14 +283,17 @@ class github_repo_walk {
         return ($localGitHash == $ExpectedGitHash);
     }
 
-    public function git_repo_compare_walk(
+    public function git_repo_walk(
         $git_user = NULL,
         $git_repo = NULL,
         $branch = NULL,
         $local_path = NULL
     ) {
         //get repository list from GitHub into object
-        $git_repo_obj = $this->git_repo_files_list($git_user, $git_repo, $branch);
+        $git_repo_obj = $this->read_repo_files_list(
+            $this->git_user_repo_pair($git_user, $git_repo),
+            $branch
+        );
         if(!$git_repo_obj) return false;
 
         //check ->tree object
@@ -323,7 +361,7 @@ class github_repo_walk {
                     $this->cnt_not_found++;
                 }
             } else {
-                throw new Exception("Unknown git-type received: $gitType",999);
+                throw new \Exception("Unknown git-type received: $gitType",999);
             }
             if($this->{$hookName}) {
                 call_user_func(
