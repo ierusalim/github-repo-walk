@@ -6,6 +6,7 @@ _It is not wrapper for "git"_.
 
 ### Example of use:
 ```php
+namespace ierusalim\gitAPIwork;
 require 'github_repo_walk.php'; // or require 'vendor/autoload.php';
 
 $g = new github_repo_walk( 
@@ -26,6 +27,7 @@ Result: download files from this repository to &lt;local path for repository&gt;
 
 Git repositories list for specified user:
 ```php
+namespace ierusalim\gitAPIwork;
 require 'github_repo_walk.php'; // or require 'vendor/autoload.php';
 
 $g = new github_repo_walk();
