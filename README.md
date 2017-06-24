@@ -22,3 +22,16 @@ print_r($stat);
 
 Result: download files from this repository to &lt;local path for repository&gt;
 
+### Example 2:
+
+Git repositories list for specified user:
+```php
+require 'github_repo_walk.php'; // or require 'vendor/autoload.php';
+
+$g = new github_repo_walk();
+
+$repo_arr = $g->git_user_repositories_list('php-fig');
+
+print_r($repo_arr);
+```
+Result: get as array repositories list of git-user 'php-fig'

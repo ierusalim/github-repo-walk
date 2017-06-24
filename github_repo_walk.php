@@ -41,21 +41,25 @@ class github_repo_walk {
     public $cnt_found_obj = 0;
     
     public function __construct(
-        $local_repo_path, //local path for working with current git-repository
-        $git_user_and_repo, // user/repo, for example: ierusalim/git-repo-walk
+        $local_repo_path = NULL, //local path for working with current git-repository
+        $git_user_and_repo = NULL, // user/repo, for example: ierusalim/git-repo-walk
         $git_branch=NULL //default_branch will be taken from repo-info (if NULL)
     ) {
         //Init hooks to read_only mode
         $this->write_disable();
         
         //set local path to $this->local_repo_path with DS in end
-        $this->set_local_path($local_repo_path);
-
+        if(!is_null($local_repo_path)) {
+            $this->set_local_path($local_repo_path);
+        }
+        
         //set default user and repo
-        $this->set_default_user_repo($git_user_and_repo);
- 
+        if(!is_null($git_user_and_repo)) {
+            $this->set_default_user_repo($git_user_and_repo);
+        }
+        
         //set default branch if default_repo defined
-        if(!is_null($this->default_git_repo)) {
+        if(!is_null($this->default_git_user) && !is_null($this->default_git_repo)) {
             $this->set_default_branch($git_branch);
         }
     }
@@ -150,11 +154,10 @@ class github_repo_walk {
     }
 
     public function git_user_repositories_list(
-        $git_user = NULL
+        $git_user = NULL  // git-user of NULL for use $this->default_git_user
     ) {
-        //In: git-user of NULL for use $this->default_git_user
-        //Work: Retrieving list of GitHub repositories for specified user
-        //Out: Array of repositories in simple internal format
+        //Function retrieving list of GitHub repositories for specified user
+        //and return array of repositories in simple internal format
         //Side effect: 
         //  store result array in $this->user_repositories_arr
         //  store api-answer in $this->cached_user_repsitories_list
@@ -162,18 +165,30 @@ class github_repo_walk {
         if(is_null($git_user)) {
             $git_user = $this->default_git_user;
         }
+        if(is_null($git_user)) {
+            throw new \Exception("Undefined git-user");
+        }
+            
         if( // looking in cache
             !isset($this->user_repositories_arr[$git_user])
         ) { // if not found in cache
             // retreive repositories list via api
             $srcURL = 'https://api.github.com/users/' . $git_user . '/repos';
             $raw_json = $this->https_get_contents( $srcURL );
-            if(!$raw_json) return false;
+            if(!$raw_json) {
+                throw new \Exception("Data not received from $srcURL");
+            }
             //decode answer and store in cache
-            $this->cached_user_repsitories_list[$git_user] = json_decode($raw_json);
+            $results_obj = json_decode($raw_json);
+            $this->cached_user_repsitories_list[$git_user] = $results_obj;
+            //errors checking
+            if(isset($results_obj->message)) {
+                throw new \Exception("ERROR on git_user_repositories_list($git_user): "
+                    . $results_obj->message);
+            }
             //converting to internal format
             $repo_arr=[];
-            foreach($this->cached_user_repsitories_list[$git_user] as $repo_obj) {
+            foreach($results_obj as $repo_obj) {
                 $repo_arr[$repo_obj->name]=[
                     'id'=>$repo_obj->id,
                     'name'=>$repo_obj->name,
