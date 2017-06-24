@@ -49,25 +49,29 @@ class github_repo_walk {
              dirname($local_repo_path . DIRECTORY_SEPARATOR .'a')
             . DIRECTORY_SEPARATOR;        
     }
-    public function git_repo_list_url(
+    public function git_user_repo_pair(
         $git_user = NULL,
-        $git_repo = NULL,
-        $git_branch = NULL
+        $git_repo = NULL
     ) {
-        if(is_null($git_user)) {
+       if(is_null($git_user)) {
             $git_user = $this->default_git_user;
         }
         if(is_null($git_repo)) {
             $git_repo = $this->default_git_repo;
         }
+        return $git_user . '/' . $git_repo;
+    }
+    public function git_repo_list_url(
+        $git_user = NULL,
+        $git_repo = NULL,
+        $git_branch = NULL
+    ) {
         if(is_null($git_branch)) {
             $git_branch = $this->default_git_branch;
         }
         return
              'https://api.github.com/repos/'
-            . $git_user
-            . '/'
-            . $git_repo
+            . $this->git_user_repo_pair($git_user, $git_repo)
             . '/git/trees/'
             . $git_branch
             . '?recursive=1'
@@ -85,7 +89,20 @@ class github_repo_walk {
         if(!$raw_json) return false;
         return json_decode($raw_json);
     }
-
+    
+    public function git_branches_list_url($git_user = NULL, $git_repo = NULL) {
+        return
+            'https://api.github.com/repos/'
+            . $this->git_user_repo_pair($git_user, $git_repo)
+            . '/git/refs/heads/';
+    }
+    public function git_req_branches_list($git_user = NULL, $git_repo = NULL) {
+        $raw_json = $this->https_get_contents(
+            $this->git_branches_list_url($git_user, $git_repo)
+        );
+        if(!$raw_json) return false;
+        return json_decode($raw_json);    
+    }
     function git_local_file_compare(
         $fullPathFileName, 
         $ExpectedGitSize,
