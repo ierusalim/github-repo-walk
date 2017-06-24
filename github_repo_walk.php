@@ -7,10 +7,11 @@ class github_repo_walk {
     public $default_git_branch;
     public $local_repo_path;
 
-    public $cached_repository_info; //cache for get_repo_info_obj()
+    public $cached_repository_info=[]; //cache for get_repo_info_obj()
     public $cached_objs_in_repo_list; //cache for git_req_repo_files_list()
-    public $cached_user_repsitories_list; //cache for git_req_user_repo_list()
-    public $user_repositories_arr; //converted from cached_user_repo_list_arr
+    
+    public $cached_user_repsitories_list=[]; //cache for git_user_repositories_list()
+    public $user_repositories_arr=[]; //converted from cached_user_repo_list_arr
 
     public $rawDownloadMode = true; //true = use raw.githubusercontent.com
                                     //false = use api.github for download files
@@ -95,14 +96,13 @@ class github_repo_walk {
         
         //try get default branch from cached_user_repo_list_arr
         if(
-            isset($this->user_repositories_arr[$git_repo]) &&
-            ($this->cached_user_repsitories_list['user'] === $git_user)
+            isset($this->user_repositories_arr[$git_user])
         ) {
-            return $this->user_repositories_arr[$git_repo]['default_branch'];
+            return $this->user_repositories_arr[$git_user][$git_repo]['default_branch'];
         }
         
         //try get default_branch from repo_info
-        $repo_info = $this->git_req_repo_info( $git_user, $git_repo );
+        $repo_info = $this->git_repository_info( $git_user, $git_repo );
         $git_branch = $repo_info->default_branch;
         return $git_branch;
     }
@@ -122,37 +122,58 @@ class github_repo_walk {
         return $git_user . '/' . $git_repo;
     }
 
-    public function git_req_user_repo_list(
+    public function git_user_repositories_list(
         $git_user = NULL
     ) {
+        //In: git-user of NULL for use $this->default_git_user
+        //Work: Retrieving list of GitHub repositories for specified user
+        //Out: Array of repositories in simple internal format
+        //Side effect: 
+        //  store result array in $this->user_repositories_arr
+        //  store api-answer in $this->cached_user_repsitories_list
+        
         if(is_null($git_user)) {
             $git_user = $this->default_git_user;
         }
-        if(
-            !isset($this->cached_user_repsitories_list['user']) ||
-            $this->cached_user_repsitories_list['user'] != $git_user
-        ) {     
+        if( // looking in cache
+            !isset($this->user_repositories_arr[$git_user])
+        ) { // if not found in cache
+            // retreive repositories list via api
             $srcURL = 'https://api.github.com/users/' . $git_user . '/repos';
             $raw_json = $this->https_get_contents( $srcURL );
             if(!$raw_json) return false;
-            $this->cached_user_repsitories_list = json_decode($raw_json);
-            //converting to own format
+            //decode answer and store in cache
+            $this->cached_user_repsitories_list[$git_user] = json_decode($raw_json);
+            //converting to internal format
             $repo_arr=[];
-            foreach($this->cached_user_repsitories_list as $repo_obj) {
+            foreach($this->cached_user_repsitories_list[$git_user] as $repo_obj) {
                 $repo_arr[$repo_obj->name]=[
+                    'id'=>$repo_obj->id,
                     'name'=>$repo_obj->name,
                     'description'=>$repo_obj->description,
                     'fork'=>$repo_obj->fork,
+                    'forks_count'=>$repo_obj->forks_count,
+                    'watchers'=>$repo_obj->watchers,
+                    'homepage'=>$repo_obj->homepage,
+                    'created_at'=>$repo_obj->created_at,
+                    'updated_at'=>$repo_obj->updated_at,
+                    'pushed_at'=>$repo_obj->pushed_at,
+                    'size'=>$repo_obj->size,
+                    'has_wiki'=>$repo_obj->has_wiki,
+                    'has_downloads'=>$repo_obj->has_downloads,
+                    'has_pages'=>$repo_obj->has_pages,
+                    'has_issues'=>$repo_obj->has_issues,
+                    'open_issues_count'=>$repo_obj->open_issues_count,
                     'language'=>$repo_obj->language,
                     'default_branch'=>$repo_obj->default_branch
                 ];
             }
-            $this->user_repositories_arr = $repo_arr;
-            $this->cached_user_repsitories_list['user'] = $git_user;
+            $this->user_repositories_arr[$git_user] = $repo_arr;
         }
-        return $this->cached_user_repsitories_list;
+        return $this->user_repositories_arr[$git_user];
     }
-    public function git_repo_files_list_url(
+
+    public function git_repo_files_url(
         $git_user = NULL,
         $git_repo = NULL,
         $git_branch = NULL
@@ -168,12 +189,12 @@ class github_repo_walk {
             . '?recursive=1'
         ;
     }
-    public function git_req_repo_files_list(
+    public function git_repo_files_list(
         $git_user = NULL,
         $git_repo = NULL,
         $git_branch = NULL     
     ) {
-        $srcURL = $this->git_repo_files_list_url($git_user, $git_repo,$git_branch);
+        $srcURL = $this->git_repo_files_url($git_user, $git_repo, $git_branch);
         if(
             !isset($this->cached_objs_in_repo_list->from_url) ||
             $this->cached_objs_in_repo_list->from_url != $srcURL
@@ -186,21 +207,20 @@ class github_repo_walk {
         return $this->cached_objs_in_repo_list;
     }
     
-    public function git_req_repo_info($git_user = NULL, $git_repo = NULL) {
+    public function git_repository_info($git_user = NULL, $git_repo = NULL) {
         $repo_pair = $this->git_user_repo_pair($git_user, $git_repo);
         if(
-            !isset($this->cached_repository_info->full_name) ||
-            ($this->cached_repository_info->full_name != $repo_pair)
+            !isset($this->cached_repository_info[$repo_pair])
         ) {
             $raw_json = $this->https_get_contents(
                 'https://api.github.com/repos/' . $repo_pair
             );
             if(!$raw_json) return false;
-            $this->cached_repository_info = json_decode($raw_json);
+            $this->cached_repository_info[$repo_pair] = json_decode($raw_json);
         }
-        return $this->cached_repository_info;
+        return $this->cached_repository_info[$repo_pair];
     }
-    public function git_req_branches_list($git_user = NULL, $git_repo = NULL) {
+    public function git_branches_list($git_user = NULL, $git_repo = NULL) {
         $raw_json = $this->https_get_contents(
             'https://api.github.com/repos/'
             . $this->git_user_repo_pair($git_user, $git_repo)
@@ -235,7 +255,7 @@ class github_repo_walk {
         $local_path = NULL
     ) {
         //get repository list from GitHub into object
-        $git_repo_obj = $this->git_req_repo_files_list($git_user, $git_repo, $branch);
+        $git_repo_obj = $this->git_repo_files_list($git_user, $git_repo, $branch);
         if(!$git_repo_obj) return false;
 
         //check ->tree object
@@ -346,20 +366,21 @@ class github_repo_walk {
             'http' => $http_opt_arr
         ]));
     }
-    public function git_raw_file_url($fileName) {
+    public function git_raw_file_url($git_fileName) {
         return 'https://raw.githubusercontent.com/'
             . $this->git_user_repo_pair() . '/'
             . $this->default_git_branch . '/'
-            . $fileName;
+            . $git_fileName;
     }
-    public function git_raw_file_download( $fileName )
+    public function git_raw_file_download( $git_fileName )
     {
-        $srcURL = $this->git_raw_file_url($fileName);
+        $srcURL = $this->git_raw_file_url($git_fileName);
         return $this->https_get_contents( $srcURL );
     }
     public function git_api_file_download( $srcURL ) {
-        //ATTN: api not recomended for download files,
-        // because rate-limit 60req/hour. Better use git_raw_file_download
+        //ATTN: this function not recomended for download files,
+        // because api.github.com have rate-limit 60req/hour.
+        // Better use git_raw_file_download function
        $api_content = $this->https_get_contents($srcURL);
        if(!$api_content) return false;
        $api_content = json_decode($api_content);
