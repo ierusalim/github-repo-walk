@@ -7,7 +7,10 @@ class github_repo_walk {
     public $default_git_branch;
     public $local_repo_path;
 
-    public $repo_info_obj; //caching for get_repo_info_obj()
+    public $cached_repository_info; //cache for get_repo_info_obj()
+    public $cached_objs_in_repo_list; //cache for git_req_repo_files_list()
+    public $cached_user_repsitories_list; //cache for git_req_user_repo_list()
+    public $user_repositories_arr; //converted from cached_user_repo_list_arr
 
     public $rawDownloadMode = true; //true = use raw.githubusercontent.com
                                     //false = use api.github for download files
@@ -39,31 +42,69 @@ class github_repo_walk {
     public function __construct(
         $local_repo_path,
         $git_user,
-        $git_repo,
-        $git_branch=NULL //default branch will be taken if not defined here
+        $git_repo = NULL,
+        $git_branch=NULL //default_branch will be taken from repo if not defined
     ) {
-        $this->set_local_path($local_repo_path);
-        $this->default_git_user = $git_user;
-        $this->default_git_repo = $git_repo;
-        if(is_null($git_branch)) {
-            $repo_info = $this->git_req_repo_info();
-            $git_branch = $repo_info->default_branch;
-        }
+        //Init hooks to read_only mode
+        $this->write_disable();
         
-        $this->default_git_branch = $git_branch;
-        foreach( $this->WalkHookNames as $hookName ) {
-            $this->{$hookName} = __CLASS__ . '::fn_hook_default';
+        //set local path to $this->local_repo_path with DS in end
+        $this->set_local_path($local_repo_path);
+        
+        //set default git-user
+        $this->default_git_user = $git_user;
+        
+        if(!is_null($git_repo)) {
+            //set git-repository and git_branch
+            $this->set_default_repo($git_repo, $git_branch);
         }
     }
     public function write_enable() {
         //set callable functions for mkdir and file_put_contents
         $this->fn_mkdir = __CLASS__ . '::check_dir_mkdir';
         $this->fn_file_put_contents = 'file_put_contents';
-   }
+    }
+    public function write_disable() {
+        foreach( $this->WalkHookNames as $hookName ) {
+            $this->{$hookName} = __CLASS__ . '::fn_hook_default';
+        }
+        $this->fn_mkdir = false;
+        $this->fn_file_put_contents = false;
+    }
     public function set_local_path($local_repo_path) {
         $this->local_repo_path = 
              dirname($local_repo_path . DIRECTORY_SEPARATOR .'a')
             . DIRECTORY_SEPARATOR;        
+    }
+    public function set_default_repo($git_repo, $git_branch = NULL) {
+        $this->default_git_repo = $git_repo;
+        $git_branch = $this->git_repo_default_branch($git_repo);
+        $this->default_git_branch = $git_branch;
+    }
+    public function git_repo_default_branch( $git_repo = NULL ) {
+        if(is_null($git_repo)) {
+            $git_repo = $this->default_git_repo;
+        }
+        if(is_null($git_repo)) {
+            throw new Exception("GIT-Repository undefined");
+        }
+        $git_user = $this->default_git_user;
+        if(is_null($git_user)) {
+            throw new Exception("GIT-User undefined");
+        }
+        
+        //try get default branch from cached_user_repo_list_arr
+        if(
+            isset($this->user_repositories_arr[$git_repo]) &&
+            ($this->cached_user_repsitories_list['user'] === $git_user)
+        ) {
+            return $this->user_repositories_arr[$git_repo]['default_branch'];
+        }
+        
+        //try get default_branch from repo_info
+        $repo_info = $this->git_req_repo_info( $git_user, $git_repo );
+        $git_branch = $repo_info->default_branch;
+        return $git_branch;
     }
     public function git_user_repo_pair(
         $git_user = NULL,
@@ -74,10 +115,44 @@ class github_repo_walk {
         }
         if(is_null($git_repo)) {
             $git_repo = $this->default_git_repo;
+            if(is_null($git_repo)) {
+                throw new \Exception("Repository undefined");
+            }
         }
         return $git_user . '/' . $git_repo;
     }
-    public function git_repo_list_url(
+
+    public function git_req_user_repo_list(
+        $git_user = NULL
+    ) {
+        if(is_null($git_user)) {
+            $git_user = $this->default_git_user;
+        }
+        if(
+            !isset($this->cached_user_repsitories_list['user']) ||
+            $this->cached_user_repsitories_list['user'] != $git_user
+        ) {     
+            $srcURL = 'https://api.github.com/users/' . $git_user . '/repos';
+            $raw_json = $this->https_get_contents( $srcURL );
+            if(!$raw_json) return false;
+            $this->cached_user_repsitories_list = json_decode($raw_json);
+            //converting to own format
+            $repo_arr=[];
+            foreach($this->cached_user_repsitories_list as $repo_obj) {
+                $repo_arr[$repo_obj->name]=[
+                    'name'=>$repo_obj->name,
+                    'description'=>$repo_obj->description,
+                    'fork'=>$repo_obj->fork,
+                    'language'=>$repo_obj->language,
+                    'default_branch'=>$repo_obj->default_branch
+                ];
+            }
+            $this->user_repositories_arr = $repo_arr;
+            $this->cached_user_repsitories_list['user'] = $git_user;
+        }
+        return $this->cached_user_repsitories_list;
+    }
+    public function git_repo_files_list_url(
         $git_user = NULL,
         $git_repo = NULL,
         $git_branch = NULL
@@ -93,31 +168,37 @@ class github_repo_walk {
             . '?recursive=1'
         ;
     }
-    public function git_req_repo_list(
+    public function git_req_repo_files_list(
         $git_user = NULL,
         $git_repo = NULL,
         $git_branch = NULL     
     ) {
-        $raw_json = $this->https_get_contents(
-            $this->git_repo_list_url($git_user, $git_repo,$git_branch)
-        );
-        if(!$raw_json) return false;
-        return json_decode($raw_json);
+        $srcURL = $this->git_repo_files_list_url($git_user, $git_repo,$git_branch);
+        if(
+            !isset($this->cached_objs_in_repo_list->from_url) ||
+            $this->cached_objs_in_repo_list->from_url != $srcURL
+        ) {
+            $raw_json = $this->https_get_contents( $srcURL );
+            if(!$raw_json) return false;
+            $this->cached_objs_in_repo_list = json_decode($raw_json);
+            $this->cached_objs_in_repo_list->from_url = $srcURL;
+        }
+        return $this->cached_objs_in_repo_list;
     }
     
     public function git_req_repo_info($git_user = NULL, $git_repo = NULL) {
         $repo_pair = $this->git_user_repo_pair($git_user, $git_repo);
         if(
-            !isset($this->repo_info_obj->full_name) ||
-            ($this->repo_info_obj->full_name != $repo_pair)
+            !isset($this->cached_repository_info->full_name) ||
+            ($this->cached_repository_info->full_name != $repo_pair)
         ) {
             $raw_json = $this->https_get_contents(
                 'https://api.github.com/repos/' . $repo_pair
             );
             if(!$raw_json) return false;
-            $this->repo_info_obj = json_decode($raw_json);
+            $this->cached_repository_info = json_decode($raw_json);
         }
-        return $this->repo_info_obj;
+        return $this->cached_repository_info;
     }
     public function git_req_branches_list($git_user = NULL, $git_repo = NULL) {
         $raw_json = $this->https_get_contents(
@@ -154,7 +235,7 @@ class github_repo_walk {
         $local_path = NULL
     ) {
         //get repository list from GitHub into object
-        $git_repo_obj = $this->git_req_repo_list($git_user, $git_repo, $branch);
+        $git_repo_obj = $this->git_req_repo_files_list($git_user, $git_repo, $branch);
         if(!$git_repo_obj) return false;
 
         //check ->tree object
