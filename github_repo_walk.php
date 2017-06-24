@@ -44,6 +44,11 @@ class github_repo_walk {
             $this->{$hookName} = __CLASS__ . '::fn_hook_default';
         }
     }
+    public function write_enable() {
+        //set callable functions for mkdir and file_put_contents
+        $this->fn_mkdir = __CLASS__ . '::check_dir_mkdir';
+        $this->fn_file_put_contents = 'file_put_contents';
+   }
     public function set_local_path($local_repo_path) {
         $this->local_repo_path = 
              dirname($local_repo_path . DIRECTORY_SEPARATOR .'a')
@@ -77,7 +82,6 @@ class github_repo_walk {
             . '?recursive=1'
         ;
     }
-
     public function git_req_repo_list(
         $git_user = NULL,
         $git_repo = NULL,
@@ -90,19 +94,16 @@ class github_repo_walk {
         return json_decode($raw_json);
     }
     
-    public function git_branches_list_url($git_user = NULL, $git_repo = NULL) {
-        return
-            'https://api.github.com/repos/'
-            . $this->git_user_repo_pair($git_user, $git_repo)
-            . '/git/refs/heads/';
-    }
     public function git_req_branches_list($git_user = NULL, $git_repo = NULL) {
         $raw_json = $this->https_get_contents(
-            $this->git_branches_list_url($git_user, $git_repo)
+            'https://api.github.com/repos/'
+            . $this->git_user_repo_pair($git_user, $git_repo)
+            . '/git/refs/heads/'
         );
         if(!$raw_json) return false;
         return json_decode($raw_json);    
     }
+
     function git_local_file_compare(
         $fullPathFileName, 
         $ExpectedGitSize,
@@ -131,7 +132,17 @@ class github_repo_walk {
         $git_repo_obj = $this->git_req_repo_list($git_user, $git_repo, $branch);
         if(!$git_repo_obj) return false;
 
-        //local path prepare
+        //check ->tree object
+        if(!isset($git_repo_obj->tree)) {
+            //throw exception if ->tree not found
+            if(isset($git_repo_obj->message)) { //add message if got
+                throw new \Exception("ERROR: ".$git_repo_obj->message);
+            } else {
+                throw new \Exception("Bad response");
+            }
+        }
+
+        //local path prepare - must have DS in end
         if(is_null($localPath)) {
             $localPath = $this->local_repo_path;
         } elseif(substr($localPath,-1) !== DIRECTORY_SEPARATOR) {
@@ -139,12 +150,12 @@ class github_repo_walk {
                 . DIRECTORY_SEPARATOR;
         }        
 
-        //read hooks from $this->vars to local vars (for use by "compact")
+        //set hooks from $this->vars to local vars (for use by "compact")
         $fn_file_put_contents = $this->fn_file_put_contents;
         $fn_mkdir = $this->fn_mkdir;
         $fn_conflict = $this->fn_conflict;
         
-        //reset statistic
+        //reset statistic. (This function return statistic as array)
         $this->cnt_conflicts = 0;
         $this->cnt_not_found = 0;
         $this->cnt_found_obj = 0;
@@ -152,6 +163,7 @@ class github_repo_walk {
         //walk all repo-objects (files and dirs)
         foreach($git_repo_obj->tree as $git_fo) {
             $gitPath = $git_fo->path;
+            //convert / to local DS
             $localFile = implode(DIRECTORY_SEPARATOR,explode('/',$gitPath));
             $fullPathFileName = $localPath . $localFile;
             $gitType = $git_fo->type;
@@ -176,7 +188,7 @@ class github_repo_walk {
                     $hookName = 'hookFileLocalNotFound';
                     $this->cnt_not_found++;
                 }
-            } elseif($gitType == 'tree') {
+            } elseif($gitType == 'tree') { //type tree is subdir
                 if(is_dir($fullPathFileName)) {
                     $hookName = 'hookHaveLocalPath';
                     $this->cnt_found_obj++;
@@ -283,10 +295,7 @@ class github_repo_walk {
             break;
         }
    }
-   public function write_enable() {
-       $this->fn_mkdir = __CLASS__ . '::check_dir_mkdir';
-       $this->fn_file_put_contents = 'file_put_contents';
-   }
+
    public function check_dir_mkdir($fullPath, $srcDS = DIRECTORY_SEPARATOR) {
        $path_arr=explode($srcDS , $fullPath);
        if(is_dir(implode(DIRECTORY_SEPARATOR,$path_arr))) return true;
