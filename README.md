@@ -11,7 +11,7 @@ require 'github_repo_walk.php'; // or require 'vendor/autoload.php';
 $g = new github_repo_walk(
     '<any local path>',
     'ierusalim',
-    'git-repo-walk',
+    'github-repo-walk',
     'master'
     );
 
