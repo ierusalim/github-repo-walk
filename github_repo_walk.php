@@ -10,7 +10,6 @@ class github_repo_walk {
     public $cached_repository_info=[]; //cache for get_repo_info_obj()
     public $cached_objs_in_repo_list; //cache for git_req_repo_files_list()
     
-    public $cached_user_repsitories_list=[]; //cache for git_user_repositories_list()
     public $user_repositories_arr=[]; //converted from cached_user_repo_list_arr
 
     public $rawDownloadMode = true; //true = use raw.githubusercontent.com
@@ -157,10 +156,9 @@ class github_repo_walk {
         $git_user = NULL  // git-user of NULL for use $this->default_git_user
     ) {
         //Function retrieving list of GitHub repositories for specified user
-        //and return array of repositories in simple internal format
+        //and return array in simple internal format
         //Side effect: 
-        //  store result array in $this->user_repositories_arr
-        //  store api-answer in $this->cached_user_repsitories_list
+        //  store result array in $this->user_repositories_arr[git-user]
         
         if(is_null($git_user)) {
             $git_user = $this->default_git_user;
@@ -169,24 +167,23 @@ class github_repo_walk {
             throw new \Exception("Undefined git-user");
         }
             
-        if( // looking in cache
+        if( // looking for cached data
             !isset($this->user_repositories_arr[$git_user])
-        ) { // if not found in cache
+        ) { // not found
             // retreive repositories list via api
             $srcURL = 'https://api.github.com/users/' . $git_user . '/repos';
             $raw_json = $this->https_get_contents( $srcURL );
             if(!$raw_json) {
-                throw new \Exception("Data not received from $srcURL");
+                throw new \Exception("Data not received from $srcURL",500);
             }
             //decode answer and store in cache
             $results_obj = json_decode($raw_json);
-            $this->cached_user_repsitories_list[$git_user] = $results_obj;
             //errors checking
             if(isset($results_obj->message)) {
                 throw new \Exception("ERROR on git_user_repositories_list($git_user): "
-                    . $results_obj->message);
+                    . $results_obj->message, 501);
             }
-            //converting to internal format
+            //get only interesting data
             $repo_arr=[];
             foreach($results_obj as $repo_obj) {
                 $repo_arr[$repo_obj->name]=[
