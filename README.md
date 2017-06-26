@@ -15,7 +15,7 @@ $g = new GitRepoWalk(
     'ierusalim/github-repo-walk' //git-user and repository in one string
 );
 
-$g->write_enable(); // if skip it remote repository will be compare with local
+$g->writeEnable(); // if skip it remote repository will be compare with local
 
 $stat = $g->gitRepoWalk(); //download all files from repository to local-path
 
@@ -28,7 +28,6 @@ Result: download files from this repository to &lt;local path for repository&gt;
 
 Use of various additional functions:
 ```php
-
 //Get repositories list for specified user:
 $repo_list_arr = $g->getUserRepositoriesList('php-fig');
 

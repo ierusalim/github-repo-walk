@@ -389,14 +389,18 @@ class GitRepoWalk {
 
     public function gitRepoWalk(
         $git_user_and_repo = NULL,
-        $branch = NULL,
+        $git_branch = NULL,
         $localPath = NULL
     ) {
         extract($this->userRepoPairDivide($git_user_and_repo, 3));
+
+        if(is_null($git_branch)) {
+            $git_branch = $this->getCurrentBranchName($git_user_and_repo);
+        }
         //get repository list from GitHub into object
         $git_repo_obj = $this->getRepoFilesList(
             $this->userRepoPairBind($git_user, $git_repo),
-            $branch
+            $git_branch
         );
         if(!$git_repo_obj) return false;
 
@@ -411,7 +415,7 @@ class GitRepoWalk {
         }
 
         $pair_low= \strtolower($git_user . '/' . $git_repo);
-        
+                
         //local path prepare - must have DS in end
         if(is_null($localPath)) {
             $localPath = empty($this->localRepoPathArr[$pair_low]) ?
@@ -480,6 +484,9 @@ class GitRepoWalk {
                         'fullPathFileName',
                         'localPath',
                         'git_fo',
+                        'git_user',
+                        'git_repo',
+                        'git_branch',
                         'fnFilePutContents',
                         'fnMkDir',
                         'fnConflict'
@@ -513,18 +520,30 @@ class GitRepoWalk {
             'http' => $http_opt_arr
         ]));
     }
-    public function gitRAWfileUrl($git_fileName) {
+    public function gitRAWfileUrl(
+        $git_fileName, 
+        $git_user_and_repo = NULL,
+        $git_branch = NULL
+    ) {
+        extract($this->userRepoPairDivide($git_user_and_repo, 3));
+        if(is_null($git_branch)) {
+            $git_branch = $this->getCurrentBranchName($git_user_and_repo);
+        }
         return 'https://raw.githubusercontent.com/'
-            . $this->userRepoPairBind() . '/'
-            . $this->defaultGitBranch . '/'
+            . $this->userRepoPairBind($git_user, $git_repo) . '/'
+            . $git_branch . '/'
             . $git_fileName;
     }
-    public function gitRAWfileDownload($git_fileName)
-    {
-        $srcURL = $this->gitRAWfileUrl($git_fileName);
+    public function gitRAWfileDownload(
+        $git_fileName,
+        $git_user_and_repo = NULL,
+        $git_branch = NULL
+    ) {
+        $srcURL = $this->gitRAWfileUrl($git_fileName, $git_user_and_repo, $git_branch);
         return $this->httpsGetContents($srcURL);
     }
-    public function gitAPIfileDownload($srcURL) {
+    public function gitAPIfileDownload($srcURL)
+    {
         //ATTN: this function not recomended for download files,
         // because api.github.com have rate-limit 60req/hour.
         // Better use gitRAWfileDownload function
@@ -562,7 +581,11 @@ class GitRepoWalk {
             if($have_dir) {
                 if(\is_callable($fnFilePutContents)) {
                     if($this->rawDownloadMode) {
-                        $fileContent = $this->gitRAWfileDownload($git_fo->path);
+                        $fileContent = $this->gitRAWfileDownload(
+                            $git_fo->path,
+                            $git_user . '/' . $git_repo,
+                            $git_branch
+                        );
                     } else {
                         $fileContent = $this->gitAPIfileDownload($git_fo->url);
                     }
