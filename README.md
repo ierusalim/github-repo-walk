@@ -25,17 +25,16 @@ print_r($stat);
 
 Result: download files from this repository to &lt;local path for repository&gt;
 
-### Example 2:
+### Examples of some other functions:
 
-Use of various additional functions:
 ```php
 //Get repositories list for specified user:
 $repo_list_arr = $g->getUserRepositoriesList('php-fig');
 
-//Get information about repository 'ierusalim/github-repo-walk'
+//Get information about repository 'user/repo'
 $repo_info = $g->getRepositoryInfo('ierusalim/github-repo-walk');
 
-//Get contacts from repository 'ierusalim/github-repo-walk' (emails, names, roles)
+//Get contacts from repository 'user/repo' (emails, names, roles)
 $contacts = $g->getRepositoryContacts('ierusalim/github-repo-walk');
 
 print_r($contacts);

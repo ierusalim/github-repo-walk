@@ -458,10 +458,10 @@ class GitRepoWalk {
         $this->cntNotFound = 0;
         $this->cntFoundObj = 0;
 
-        if(is_callable($this->fnWalkPrepare)) {
-            if(call_user_func(
+        if($this->fnWalkPrepare) {
+            if(\call_user_func(
                 $this->fnWalkPrepare,
-                compact(
+                \compact(
                     'git_repo_obj',
                     'localPath',
                     'git_user',
@@ -514,9 +514,9 @@ class GitRepoWalk {
                 throw new \Exception("Unknown git-type received: $gitType",999);
             }
             if($this->{$hookName}) {
-                call_user_func(
+                \call_user_func(
                     $this->{$hookName},
-                    compact(
+                     \compact(
                         'hookName',
                         'fullPathFileName',
                         'localPath',
@@ -531,23 +531,25 @@ class GitRepoWalk {
                 );
             }
         }
-        if(is_callable($this->fnWalkFinal)) {
-            call_user_func(
+        $ret_arr = [
+          'cntFoundObj'=>$this->cntFoundObj,
+          'cntNotFound'=>$this->cntNotFound,
+          'cntConflicts'=>$this->cntConflicts
+        ];
+        if($this->fnWalkFinal) {
+            $ret_arr = \call_user_func(
                 $this->fnWalkFinal,
-                compact(
+                 \compact(
                     'git_repo_obj',
                     'localPath',
                     'git_user',
                     'git_repo',
-                    'git_branch'
+                    'git_branch',
+                    'ret_arr'
                 )
             );
         }
-        return [
-          'cntFoundObj'=>$this->cntFoundObj,
-          'cntNotFound'=>$this->cntNotFound,
-          'cntConflicts'=>$this->cntConflicts,
-        ];
+        return $ret_arr;
     }
 
     public function httpsGetContents($url, $ua = 'curl/7.26.0') {
