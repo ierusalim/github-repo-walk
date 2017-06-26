@@ -28,6 +28,12 @@ Result: download files from this repository to &lt;local path for repository&gt;
 
 Using simple functions:
 ```php
+//Get files list from repository
+$files = $g->getRepoFilesList("ierusalim/github-repo-walk");
+//show file names
+foreach($files->tree as $file_obj) {
+    echo $file_obj->path . "\t{$file_obj->size}\n";
+}
 
 //Get repositories list for specified user:
 $repo_list_arr = $g->getUserRepositoriesList('php-fig');

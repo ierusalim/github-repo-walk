@@ -2,11 +2,15 @@
 namespace ierusalim\GitRepoWalk;
 
 class GitRepoWalk {
-    public $defaultGitUser;
-    public $defaultGitRepo;
-    public $defaultGitBranch;
-    public $repoBranchValue=[]; //can set own branch for every user/repo pair
+    public $defaultGitUser; //default user-name and repo-name will be used when
+    public $defaultGitRepo; // this values are need, but not specified
+    
+    public $defaultGitBranch; //if set, it will be used instead send api-request
+                              // when default_branch unknown
+
+    public $repoCurrentBranch=[]; //can set own branch for every user/repo pair
                 // ATTN: all cache-keys in lowercase
+
     public $defaultLocalPath;
     public $localRepoPathArr=[]; //can set own local-path for every user/repo pair
 
@@ -64,23 +68,23 @@ class GitRepoWalk {
     public $cntFoundObj = 0;
     
     public function __construct(
-        $local_path = NULL, //local path for working with git-repository
-        $git_user_and_repo = NULL, // user/repo, for example: ierusalim/git-repo-walk
-        $git_branch=NULL //default_branch will be taken from repo-info (if NULL)
+        $local_path = NULL, //local path for work with repository (set as default)
+        $git_user_and_repo = NULL, //user/repo, for example: ierusalim/git-repo-walk
+        $default_git_branch=NULL //set as default_branch and for current user/repo
     ) {
-        //Init hooks to read_only mode
+        //Initialize hooks to read_only mode
         $this->writeDisable();
 
-        //set default user and repo and extract vars $git_user and $git_repo
+        //set default user and repo and extract to vars $git_user and $git_repo
         extract($this->setDefaultUserAndRepo($git_user_and_repo));
         
-        //if local path defined
+        //if local_path defined, set it as default local path
         if(!empty($local_path)) {
             //set this local path as default
             $this->setDefaultLocalPath($local_path);
             //if defined git-user and git-repo set this local path for user/repo
             if(!is_null($git_user) && !is_null($git_repo)) {
-                $this->setLocalPathForRepo($git_user_and_repo,$local_path);
+                $this->setLocalPathForRepo($git_user_and_repo, $local_path);
             }
         }
         
@@ -89,7 +93,7 @@ class GitRepoWalk {
             $this->setDefaultBranch($git_branch);
             //if user/repo defined, set this branch for this user/repo
             if(!is_null($git_user) && !is_null($git_repo)) {
-                $this->setBranchForRepo($git_user_and_repo,$git_branch);
+                $this->setCurrentBranchForRepo($git_user_and_repo, $git_branch);
             }
         }
     }
@@ -99,10 +103,10 @@ class GitRepoWalk {
     ) {
         //divide $git_user_and_repo by any divider-char
         //Example: for 'user/repo' return ['git_user'=>'user', 'git_repo'=>'repo']
-        $i=strcspn($git_user_and_repo,'/\\ ,:;|*#');
+        $i=strcspn($git_user_and_repo, '/\\ ,:;|*#');
         if($i !== false) {
-            $git_user = substr($git_user_and_repo,0,$i);
-            $git_repo = substr($git_user_and_repo,$i+1);
+            $git_user = substr($git_user_and_repo, 0, $i);
+            $git_repo = substr($git_user_and_repo, $i+1);
         } else {
             $git_user = $git_user_and_repo;
         }
@@ -124,7 +128,7 @@ class GitRepoWalk {
         $this->userRepoCheckMask($git_user, $git_repo, 3); //user and repo required
         return $git_user . '/' . $git_repo;
     }
-    private function userRepoCheckMask(&$git_user,&$git_repo,$require_mask=3) {
+    private function userRepoCheckMask(&$git_user, &$git_repo, $require_mask=3) {
         //check git_user and git_repo by require_mask and modify if need
         //if required value is NULL try to get default value
         //if required value is NULL and default value is NULL throw exception
@@ -132,61 +136,62 @@ class GitRepoWalk {
         if(($require_mask & 1) && is_null($git_user)) { //if user required
             $git_user = $this->defaultGitUser;
             if(is_null($git_user)) {
-                throw new \Exception("git-user undefined",700);
+                throw new \Exception("git-user undefined", 700);
             }
         }
         if(($require_mask & 2) && is_null($git_repo)) { //if repo required
             $git_repo = $this->defaultGitRepo;
             if(is_null($git_repo)) {
-                throw new \Exception("git-repository undefined",701);
+                throw new \Exception("git-repository undefined", 701);
             }
         }
     }
     public function setDefaultUserAndRepo($git_user_and_repo = NULL)
     {
         //divide $git_user_and_repo to $git_user and $git_repo
-        extract($this->userRepoPairDivide($git_user_and_repo),0);
+        extract($this->userRepoPairDivide($git_user_and_repo), 0);
         $this->defaultGitUser = empty($git_user) ? NULL : $git_user;
         $this->defaultGitRepo = empty($git_repo) ? NULL : $git_repo;
-        return compact('git_user','git_repo');
+        return compact('git_user', 'git_repo');
     }
     public function setDefaultBranch($git_branch = NULL) {
         $this->defaultGitBranch = $git_branch;
     }
-    public function setBranchForRepo($git_user_and_repo,$git_branch = NULL) {
-        extract($this->userRepoPairDivide($git_user_and_repo),3);       
-        $this->repoBranchValue[$this->userRepoPairBind()]=$git_branch;
+    public function setCurrentBranchForRepo($git_user_and_repo, $git_branch = NULL) {
+        extract($this->userRepoPairDivide($git_user_and_repo), 3);
+        $pair_low = \strtolower($git_user . '/' .$git_repo);
+        $this->repoCurrentBranch[$pair_low] = $git_branch;
     }
     public function setDefaultLocalPath($local_path = NULL) {
         $this->defaultLocalPath = empty($local_path) ?
             NULL : $this->pathDs($local_path);
     }
-    public function setLocalPathForRepo($git_user_and_repo,$local_path) {
+    public function setLocalPathForRepo($git_user_and_repo, $local_path) {
         extract($this->userRepoPairDivide($git_user_and_repo, 3));
-        $pair = $git_user . '/' .$git_repo;
-        $this->localRepoPathArr[$pair] = $this->pathDs($local_path);
+        $pair_low = \strtolower($git_user . '/' .$git_repo);
+        $this->localRepoPathArr[$pair_low] = $this->pathDs($local_path);
     }
 
     public function writeEnable() {
         //set callable functions for mkdir and file_put_contents
-        $this->fnMkDir = __CLASS__ . '::checkDirMkDir';
+        $this->fnMkDir = array($this, 'checkDirMkDir');
         $this->fnFilePutContents = 'file_put_contents';
     }
     public function writeDisable() {
         foreach($this->walkHookNames as $hookName) {
-            $this->{$hookName} = array($this , 'fnHookDefault');
+            $this->{$hookName} = array($this, 'fnHookDefault');
         }
         $this->fnMkDir = false;
         $this->fnFilePutContents = false;
     }
     public function pathDs($localRepoPathArr) {
         // returned path with directory separator in end
-        return \dirname($localRepoPathArr . \DIRECTORY_SEPARATOR .'a')
+        return \dirname($localRepoPathArr . \DIRECTORY_SEPARATOR . 'a')
             . \DIRECTORY_SEPARATOR;        
     }
-    public function requestDefaultBranchName($git_user_and_repo = NULL) {
+    public function getDefaultBranchName($git_user_and_repo = NULL) {
         //get $git_user and $git_repo from user/repo pair or from default
-        extract($this->userRepoPairDivide($git_user_and_repo , 3));
+        extract($this->userRepoPairDivide($git_user_and_repo, 3));
         
         $user_low = \strtolower($git_user);
         $repo_low = \strtolower($git_repo);
@@ -203,9 +208,13 @@ class GitRepoWalk {
         
         //if userRepositoriesArr not found, try to use cachedRepositoryInfo
         if(!isset($this->cachedRepositoryInfo[$pair_low])) {
+            //if defaultGitBranch is defined, return it, otherwise makre request
+            if(!empty($this->defaultGitBranch)) {
+                return $this->defaultGitBranch;
+            }
             //try get default_branch from repo_info
             $this->getRepositoryInfo($git_user_and_repo);
-        }        
+        }
         return $this->cachedRepositoryInfo[$pair_low]->default_branch;
     }
     
@@ -223,7 +232,7 @@ class GitRepoWalk {
 
             if(isset($ret_obj->message)) {
                 throw new \Exception(
-                "ERROR: can't get repository '$pair' " . $ret_obj->message,404);
+                "ERROR: can't get repository '$pair' " . $ret_obj->message, 404);
             }
         }
         return $this->cachedRepositoryInfo[$pair_low];
@@ -247,13 +256,14 @@ class GitRepoWalk {
             $srcURL = 'https://api.github.com/users/' . $git_user . '/repos';
             $raw_json = $this->httpsGetContents($srcURL);
             if(!$raw_json) {
-                throw new \Exception("Data not received from $srcURL",500);
+                throw new \Exception("Data not received from $srcURL", 500);
             }
             //decode answer and store in cache
             $results_obj = json_decode($raw_json);
             //errors checking
             if(isset($results_obj->message)) {
-                throw new \Exception("ERROR on git_user_repositories_list($git_user): "
+                throw new \Exception(
+                    "ERROR on git_user_repositories_list($git_user): "
                     . $results_obj->message, 501);
             }
             //get only interesting data
@@ -270,31 +280,37 @@ class GitRepoWalk {
         }
         return $this->userRepositoriesArr[$git_user_low];
     }
-
-    public function gitRepoFilesUrl(
+    public function getCurrentBranchName($git_user_and_repo) {
+        extract($this->userRepoPairDivide($git_user_and_repo, 3));        
+        $pair_low = \strtolower($git_user . '/' . $git_repo);
+        if(empty($this->repoCurrentBranch[$pair_low])) {
+            return $this->getDefaultBranchName($pair_low);
+        } else {
+            return $this->repoCurrentBranch[$pair_low];
+        }
+    }
+    private function gitRepoFilesUrl(
         $git_user = NULL,
         $git_repo = NULL,
         $git_branch = NULL
     ) {
+        $pair = $this->userRepoPairBind($git_user, $git_repo);
         if(is_null($git_branch)) {
-            $git_branch = $this->defaultGitBranch;
+            $git_branch = $this->getCurrentBranchName($pair);
         }
         return
              'https://api.github.com/repos/'
-            . $this->userRepoPairBind($git_user, $git_repo)
+            . $pair
             . '/git/trees/'
             . $git_branch
             . '?recursive=1'
         ;
     }
-    public function readRepoFilesList(
+    public function getRepoFilesList(
         $git_user_and_repo = NULL,
         $git_branch = NULL     
     ) {
         extract($this->userRepoPairDivide($git_user_and_repo));
-        if (is_null($git_branch)) {
-            $git_branch = $this->defaultGitBranch;
-        }
         $srcURL = $this->gitRepoFilesUrl($git_user, $git_repo, $git_branch);
         if(
             !isset($this->cachedObjsInRepoList->from_url) ||
@@ -305,9 +321,10 @@ class GitRepoWalk {
             $this->cachedObjsInRepoList = json_decode($raw_json);
             $this->cachedObjsInRepoList->from_url = $srcURL;
             if(!isset($this->cachedObjsInRepoList->sha)) {
-                 throw new \Exception("Not found '"
+                 throw new \Exception(
+                     "Not found '"
                     .$this->userRepoPairBind($git_user, $git_repo)
-                    ."' branch='$git_branch'",404);
+                    ."' branch='$git_branch'", 404);
             }
         }
         return $this->cachedObjsInRepoList;
@@ -342,14 +359,14 @@ class GitRepoWalk {
         return ($localGitHash == $ExpectedGitHash);
     }
 
-    public function git_repo_walk(
+    public function gitRepoWalk(
         $git_user_and_repo = NULL,
         $branch = NULL,
         $localPath = NULL
     ) {
         extract($this->userRepoPairDivide($git_user_and_repo, 3));
         //get repository list from GitHub into object
-        $git_repo_obj = $this->readRepoFilesList(
+        $git_repo_obj = $this->getRepoFilesList(
             $this->userRepoPairBind($git_user, $git_repo),
             $branch
         );
@@ -449,7 +466,7 @@ class GitRepoWalk {
         ];
     }
 
-    public function httpsGetContents($url,$ua = 'curl/7.26.0') {
+    public function httpsGetContents($url, $ua = 'curl/7.26.0') {
          $ch = \curl_init();
          \curl_setopt($ch, \CURLOPT_URL, $url);
          \curl_setopt($ch, \CURLOPT_USERAGENT, $ua);
@@ -501,7 +518,7 @@ class GitRepoWalk {
         switch($hookName) {
         case 'hookFileIsDiff':
             if(is_callable($fnConflict)) {
-                \call_user_func($fnConflict,$par_arr);
+                \call_user_func($fnConflict, $par_arr);
             }
              //echo $hookName . " $fullPathFileName\n";
             break;
@@ -532,8 +549,7 @@ class GitRepoWalk {
             break;
         case 'hookNoLocalPath':
             if(is_callable($fnMkDir)) {
-                //$this->checkDirMkDir($fullPathFileName);
-                \call_user_func($fnMkDir,$fullPathFileName);
+                \call_user_func($fnMkDir, $fullPathFileName);
             }
             break;
         }
@@ -541,7 +557,7 @@ class GitRepoWalk {
 
    public function checkDirMkDir($fullPath, $srcDS = DIRECTORY_SEPARATOR) {
        //Checking path existence and create if not found
-       $path_arr= \explode($srcDS , $fullPath);
+       $path_arr = \explode($srcDS, $fullPath);
        if (\is_dir(\implode(\DIRECTORY_SEPARATOR, $path_arr))) {
             return true;
         }
