@@ -6,15 +6,16 @@ _It is not wrapper for "git"_.
 
 ### Example of use:
 ```php
-namespace ierusalim\gitAPIwork;
-require 'github_repo_walk.php'; // or require 'vendor/autoload.php';
+namespace ierusalim\GitRepoWalk;
 
-$g = new github_repo_walk( 
+require 'GitRepoWalk.php'; // or require 'vendor/autoload.php';
+
+$g = new GitRepoWalk( 
     '<local path for repository>',
-    'ierusalim/github-repo-walk' //git-user and repository
+    'ierusalim/github-repo-walk' //git-user and repository in one string
 );
 
-$g->write_enable(); // skip it for compare remote repository with local copy
+$g->write_enable(); // if skip it remote repository will be compare with local
 
 $stat = $g->git_repo_walk(); //download all files from repository to local-path
 
@@ -27,13 +28,9 @@ Result: download files from this repository to &lt;local path for repository&gt;
 
 Git repositories list for specified user:
 ```php
-namespace ierusalim\gitAPIwork;
-require 'github_repo_walk.php'; // or require 'vendor/autoload.php';
 
-$g = new github_repo_walk();
+$repo_list_arr = $g->getUserRepositoriesList('php-fig');
 
-$repo_arr = $g->git_user_repositories_list('php-fig');
-
-print_r($repo_arr);
+print_r($repo_list_arr);
 ```
 Result: get as array repositories list of git-user 'php-fig'
