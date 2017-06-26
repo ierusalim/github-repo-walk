@@ -121,7 +121,7 @@ class GitRepoWalk {
         $git_repo = NULL
     ) {
         //Function reverse for user_repo_pair_divide, return user/repo string pair
-        $this->userRepoCheckMask($git_user,$git_repo,3); // user and repo, required
+        $this->userRepoCheckMask($git_user, $git_repo, 3); //user and repo required
         return $git_user . '/' . $git_repo;
     }
     private function userRepoCheckMask(&$git_user,&$git_repo,$require_mask=3) {
@@ -264,29 +264,6 @@ class GitRepoWalk {
                     $inter_obj[$repoPar] = $repo_obj->{$repoPar};
                 }
                 $repo_arr[\strtolower($repo_obj->name)] = $inter_obj;
-                /*
-                $repo_arr[$repo_obj->name]=[
-                    'id'=>$repo_obj->id,
-                    'name'=>$repo_obj->name,
-                    'description'=>$repo_obj->description,
-                    'fork'=>$repo_obj->fork,
-                    'forks_count'=>$repo_obj->forks_count,
-                    'watchers'=>$repo_obj->watchers,
-                    'homepage'=>$repo_obj->homepage,
-                    'created_at'=>$repo_obj->created_at,
-                    'updated_at'=>$repo_obj->updated_at,
-                    'pushed_at'=>$repo_obj->pushed_at,
-                    'size'=>$repo_obj->size,
-                    'has_wiki'=>$repo_obj->has_wiki,
-                    'has_downloads'=>$repo_obj->has_downloads,
-                    'has_pages'=>$repo_obj->has_pages,
-                    'has_issues'=>$repo_obj->has_issues,
-                    'open_issues_count'=>$repo_obj->open_issues_count,
-                    'language'=>$repo_obj->language,
-                    'default_branch'=>$repo_obj->default_branch
-                ];
-                 * 
-                 */
             }
             //cache answer
             $this->userRepositoriesArr[$git_user_low] = $repo_arr;

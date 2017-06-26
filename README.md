@@ -26,10 +26,14 @@ Result: download files from this repository to &lt;local path for repository&gt;
 
 ### Example 2:
 
-Git repositories list for specified user:
+Using simple functions:
 ```php
 
+//Get repositories list for specified user:
 $repo_list_arr = $g->getUserRepositoriesList('php-fig');
+
+//Get information about repository 'ierusalim/github-repo-walk'
+$repo_info = $g->getRepositoryInfo('ierusalim/github-repo-walk');
 
 print_r($repo_list_arr);
 ```
