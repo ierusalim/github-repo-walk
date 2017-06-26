@@ -26,7 +26,7 @@ Result: download files from this repository to &lt;local path for repository&gt;
 
 ### Example 2:
 
-Using simple functions:
+Use of various additional functions:
 ```php
 
 //Get repositories list for specified user:
