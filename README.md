@@ -17,7 +17,7 @@ $g = new GitRepoWalk(
 
 $g->write_enable(); // if skip it remote repository will be compare with local
 
-$stat = $g->git_repo_walk(); //download all files from repository to local-path
+$stat = $g->gitRepoWalk(); //download all files from repository to local-path
 
 print_r($stat);
 ```
@@ -40,6 +40,9 @@ $repo_list_arr = $g->getUserRepositoriesList('php-fig');
 
 //Get information about repository 'ierusalim/github-repo-walk'
 $repo_info = $g->getRepositoryInfo('ierusalim/github-repo-walk');
+
+//Get contacts from repository 'ierusalim/github-repo-walk' (emails, names, roles)
+$contacts = $g->getRepositoryContacts('ierusalim/github-repo-walk');
 
 print_r($repo_list_arr);
 ```

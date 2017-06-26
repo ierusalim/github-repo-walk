@@ -281,6 +281,8 @@ class GitRepoWalk {
         return $this->userRepositoriesArr[$git_user_low];
     }
     public function getCurrentBranchName($git_user_and_repo) {
+        //return branch name if it set by setCurrentBranchForRepo
+        // or return default_branch name.
         extract($this->userRepoPairDivide($git_user_and_repo, 3));        
         $pair_low = \strtolower($git_user . '/' . $git_repo);
         if(empty($this->repoCurrentBranch[$pair_low])) {
@@ -330,7 +332,29 @@ class GitRepoWalk {
         return $this->cachedObjsInRepoList;
     }
     
-    public function requestBranchesList($git_user_and_repo) {
+    public function getRepositoryContacts($git_user_and_repo = NULL) {
+        $branches = $this->getBranchesList($git_user_and_repo);
+        $contacts_arr=[];
+        foreach($branches as $branch) {
+            $obj = json_decode($this->httpsGetContents($branch->object->url));
+            foreach(['author','committer'] as $key) {
+                if(!isset($obj->{$key})) continue;
+                $email = $obj->{$key}->email;
+                $contact = [
+                    'name'=>$obj->{$key}->name,
+                    'role'=>$git_user_and_repo.'#'.$key
+                ];
+                if(isset($contacts_arr[$email])) {
+                    if(in_array($contact, $contacts_arr[$email])) continue;
+                    $contacts_arr[$email][] = $contact;
+                } else {
+                    $contacts_arr[$email] = [$contact];
+                }
+            }
+        }
+        return $contacts_arr;
+    }
+    public function getBranchesList($git_user_and_repo = NULL) {
         extract($this->userRepoPairDivide($git_user_and_repo, 3));
         $raw_json = $this->httpsGetContents(
             'https://api.github.com/repos/'
@@ -338,7 +362,11 @@ class GitRepoWalk {
             . '/git/refs/heads/'
         );
         if(!$raw_json) return false;
-        return json_decode($raw_json);    
+        $branches = json_decode($raw_json);
+        if(isset($branches->message)) {
+            throw new \Exception("ERROR:" . $branches->message, 404);
+        }
+        return $branches;    
     }
     
     function gitLocalFileCompare(
