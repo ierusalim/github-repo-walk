@@ -23,15 +23,20 @@ class GitRepoWalk {
                                     //false = use api.github for download files
     //api.github not recomended for download files, because rate-limit 60req/hour
     
-    public $fnFilePutContents = false;
-    public $fnMkDir = false;
-    public $fnConflict = false;
+    public $fnGitPathFilter = false; //this function called for every path in list
+                   // if this function return true, path not processed (skip file)
 
-    public $hookFileLocalNotFound = false;
-    public $hookFileIsEqual = false;
-    public $hookFileIsDiff = false;
-    public $hookNoLocalPath = false;
-    public $hookHaveLocalPath = false;
+    public $fnFilePutContents = false; //function for write content into file
+    public $fnMkDir = false;    //make directory for download files from repo.
+
+    public $fnConflict = false; //The function is called when the local file and
+                                    // the file in the repository are different
+
+    public $hookFileLocalNotFound = false; //file have in repo and local not found
+    public $hookFileIsEqual = false; //file in repo is equal with local file
+    public $hookFileIsDiff = false; //is the same as $fnConflict (see code)
+    public $hookNoLocalPath = false; //subdir have in repo but local not found
+    public $hookHaveLocalPath = false;//subdir from repo present in local path
     
     public $walkHookNames = [
         'hookFileSave',
@@ -388,9 +393,9 @@ class GitRepoWalk {
     }
 
     public function gitRepoWalk(
+        $localPath = NULL,
         $git_user_and_repo = NULL,
-        $git_branch = NULL,
-        $localPath = NULL
+        $git_branch = NULL
     ) {
         extract($this->userRepoPairDivide($git_user_and_repo, 3));
 
@@ -440,6 +445,10 @@ class GitRepoWalk {
         //walk all repo-objects (files and dirs)
         foreach($git_repo_obj->tree as $git_fo) {
             $gitPath = $git_fo->path;
+            if(
+                is_callable($this->fnGitPathFilter) &&
+                \call_user_func($this->fnGitPathFilter,$git_fo)
+              ) continue;
             //convert / to local DS
             $localFile = \implode(\DIRECTORY_SEPARATOR, \explode('/',$gitPath));
             $fullPathFileName = $localPath . $localFile;
@@ -560,6 +569,9 @@ class GitRepoWalk {
         //$fullPathFileName,
         //$localPath,
         //$git_fo
+        //$git_user
+        //$git_repo
+        //$git_branch
         //$fnFilePutContents
         //$fnMkDir
         switch($hookName) {
@@ -567,7 +579,6 @@ class GitRepoWalk {
             if(is_callable($fnConflict)) {
                 \call_user_func($fnConflict, $par_arr);
             }
-             //echo $hookName . " $fullPathFileName\n";
             break;
         case 'hookFileLocalNotFound':
             $pathForFile = \dirname($fullPathFileName);
