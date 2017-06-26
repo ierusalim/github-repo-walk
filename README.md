@@ -10,14 +10,15 @@ namespace ierusalim\GitRepoWalk;
 
 require 'GitRepoWalk.php'; // or require 'vendor/autoload.php';
 
-$g = new GitRepoWalk( 
-    '<local path for repository>',
-    'ierusalim/github-repo-walk' //git-user and repository in one string
-);
+$g = new GitRepoWalk();
 
 $g->writeEnable(); // if skip it remote repository will be compare with local
 
-$stat = $g->gitRepoWalk(); //download all files from repository to local-path
+//download all files from repository to local-path
+$stat = $g->gitRepoWalk( 
+    '<local path for repository>',
+    'ierusalim/github-repo-walk' //git-user and repository in one string
+);
 
 print_r($stat);
 ```
