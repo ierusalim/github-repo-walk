@@ -178,9 +178,19 @@ class GitRepoWalk {
     }
 
     public function writeEnable() {
+        $this->writeDisable(); //for clear/initialize all hooks
         //set callable functions for mkdir and file_put_contents
         $this->fnMkDir = array($this, 'checkDirMkDir');
         $this->fnFilePutContents = 'file_put_contents';
+    }
+    public function writeEnableOverwrite() {
+        $this->writeDisable(); //for clear/initialize all hooks
+        $this->writeEnable();
+        //when local file are different remove it and save from repo
+        $this->fnConflict = function($par_arr) {
+            unlink($par_arr['fullPathFileName']);//remove local version of file
+            return true; //true = write file
+        };
     }
     public function writeDisable() {
         foreach($this->walkHookNames as $hookName) {
@@ -188,6 +198,7 @@ class GitRepoWalk {
         }
         $this->fnMkDir = false;
         $this->fnFilePutContents = false;
+        $this->fnConflict = false;
     }
     public function pathDs($localRepoPathArr) {
         // returned path with directory separator in end
@@ -576,10 +587,8 @@ class GitRepoWalk {
         //$fnMkDir
         switch($hookName) {
         case 'hookFileIsDiff':
-            if(is_callable($fnConflict)) {
-                \call_user_func($fnConflict, $par_arr);
-            }
-            break;
+            if(!is_callable($fnConflict)) break;
+            if(!\call_user_func($fnConflict, $par_arr)) break;
         case 'hookFileLocalNotFound':
             $pathForFile = \dirname($fullPathFileName);
             $have_dir = \is_dir($pathForFile);
