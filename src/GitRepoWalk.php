@@ -29,6 +29,9 @@ class GitRepoWalk {
     public $fnFilePutContents = false; //function for write content into file
     public $fnMkDir = false;    //make directory for download files from repo.
 
+    public $fnWalkPrepare = false; //call before repo walking
+    public $fnWalkFinal = false; //call after repo walking complete
+    
     public $fnConflict = false; //The function is called when the local file and
                                     // the file in the repository are different
 
@@ -199,6 +202,8 @@ class GitRepoWalk {
         $this->fnMkDir = false;
         $this->fnFilePutContents = false;
         $this->fnConflict = false;
+        $this->fnWalkPrepare = false;
+        $this->fnWalkFinal = false;
     }
     public function pathDs($localRepoPathArr) {
         // returned path with directory separator in end
@@ -453,6 +458,18 @@ class GitRepoWalk {
         $this->cntNotFound = 0;
         $this->cntFoundObj = 0;
 
+        if(is_callable($this->fnWalkPrepare)) {
+            if(call_user_func(
+                $this->fnWalkPrepare,
+                compact(
+                    'git_repo_obj',
+                    'localPath',
+                    'git_user',
+                    'git_repo',
+                    'git_branch'
+                )
+            )) return $git_repo_obj;
+        }
         //walk all repo-objects (files and dirs)
         foreach($git_repo_obj->tree as $git_fo) {
             $gitPath = $git_fo->path;
@@ -513,6 +530,18 @@ class GitRepoWalk {
                     )
                 );
             }
+        }
+        if(is_callable($this->fnWalkFinal)) {
+            call_user_func(
+                $this->fnWalkFinal,
+                compact(
+                    'git_repo_obj',
+                    'localPath',
+                    'git_user',
+                    'git_repo',
+                    'git_branch'
+                )
+            );
         }
         return [
           'cntFoundObj'=>$this->cntFoundObj,
