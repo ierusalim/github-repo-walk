@@ -1,8 +1,8 @@
 # github-repo-walk
 
-Simple class for download repository from GitHub.
+Simple class for download files from GitHub repositories.
 
-_It is not wrapper for "git"_.
+_It is not wrapper for "git". Using api.github.com to get files list.
 
 ### Example of use:
 ```php
