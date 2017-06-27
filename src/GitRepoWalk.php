@@ -1,46 +1,180 @@
 <?php
+
+/**
+ * This file contains a GitHub Repository Walker Class
+ * 
+ * PHP Version 5.6
+ * 
+ * @package    ierusalim\GitRepoWalk
+ * @author     Alexander Jer <alex@ierusalim.com>
+ * @copyright  2017, Ierusalim
+ * @license    http://lunr.nl/LICENSE MIT License
+ */
+
 namespace ierusalim\GitRepoWalk;
 
 class GitRepoWalk {
-    public $defaultGitUser; //default user-name and repo-name will be used when
-    public $defaultGitRepo; // this values are need, but not specified
+    /**
+     * Default git-user name, used when git-user not specified
+     * 
+     * @var string|null
+     */
+    public $defaultGitUser;
     
-    public $defaultGitBranch; //if set, it will be used instead send api-request
-                              // when default_branch unknown
+    /**
+     * Default git-repository name, used when git-repo parameter not specified
+     * 
+     * @var string|null
+     */
+    public $defaultGitRepo;
+    
+    /**
+     * Default git-branch name
+     * if set, it will be used instead send api-request
+     * when default_branch is unknown
+     * 
+     * @var string|null
+     */
+    public $defaultGitBranch;
 
-    public $repoCurrentBranch=[]; //can set own branch for every user/repo pair
-                // ATTN: all cache-keys in lowercase
-
+    /**
+     * Can set own branch for every user/repo pair (pair is a key for array)
+     * keys must be lowercase
+     * 
+     * @var array
+     */
+    public $repoCurrentBranch=[];
+    
+    /**
+     * @var string|null
+     */
     public $defaultLocalPath;
-    public $localRepoPathArr=[]; //can set own local-path for every user/repo pair
-
-    public $cachedRepositoryInfo=[]; //cache for get_repo_info_obj() key=user/repo
-    public $cachedObjsInRepoList; //cache for git_req_repo_files_list()
     
-    public $userRepositoriesArr=[]; //cached RepositoriesInfo [keys=git-user]
+    /**
+     * Can set own local-path for every user/repo pair (pair is a key for array)
+     * keys must be lowercase
+     * 
+     * @var array
+     */
+    public $localRepoPathArr=[];
 
-    public $rawDownloadMode = true; //true = use raw.githubusercontent.com
-                                    //false = use api.github for download files
-    //api.github not recomended for download files, because rate-limit 60req/hour
+    /**
+     * Cache for api-answer about repositories 
+     * key=user/repo lowercase
+     * 
+     * @var array
+     */
+    public $cachedRepositoryInfo=[];
     
-    public $fnGitPathFilter = false; //this function called for every path in list
-                   // if this function return true, path not processed (skip file)
-
-    public $fnFilePutContents = false; //function for write content into file
-    public $fnMkDir = false;    //make directory for download files from repo.
-
-    public $fnWalkPrepare = false; //call before repo walking
-    public $fnWalkFinal = false; //call after repo walking complete
+    /**
+     * Cache for api-answer about repository file-list
+     * 
+     * @var object|null
+     */
+    public $cachedObjsInRepoList;
     
-    public $fnConflict = false; //The function is called when the local file and
-                                    // the file in the repository are different
+    /**
+     * Cache for RepositoriesInfo [keys=git-user lowercase]
+     * 
+     * @var array
+     */
+    public $userRepositoriesArr=[];
 
-    public $hookFileLocalNotFound = false; //file have in repo and local not found
-    public $hookFileIsEqual = false; //file in repo is equal with local file
-    public $hookFileIsDiff = false; //is the same as $fnConflict (see code)
-    public $hookNoLocalPath = false; //subdir have in repo but local not found
-    public $hookHaveLocalPath = false;//subdir from repo present in local path
+    /**
+     * true (default) - use raw.githubusercontent.com
+     * false - use api.github for download files (not recomended)
+     * api.github have rate-limit 60req/hour not recomended for download files
+     * 
+     * @var bool
+     */
+    public $rawDownloadMode = true;
     
+    /**
+     * This function was called for every path in repository-files-list
+     * if this function return true, path not processed (skip file)
+     * 
+     * @var callable|bool
+     */
+    public $fnGitPathFilter = false;
+    
+    /**
+     * Function for write content into file
+     * 
+     * @var callable|bool
+     */
+    public $fnFilePutContents = false;
+    
+    /**
+     * Function for make directory for download files from repo
+     * 
+     * @var callable|bool
+     */
+    public $fnMkDir = false;
+
+    /**
+     * This function call before repo walking
+     * 
+     * @var callable|bool
+     */
+    public $fnWalkPrepare = false;
+
+    /**
+     * This function call after repo walking complete
+     * 
+     * @var callable|bool
+     */
+    public $fnWalkFinal = false;
+    
+    /**
+     * The function was called when the local file and
+     * the file in the repository are different
+     * 
+     * @var callable|bool
+     */
+    public $fnConflict = false;
+
+    /**
+     * This hook was called when file have in repo and local not found
+     * 
+     * @var callable|bool 
+     */
+    public $hookFileLocalNotFound = false;
+
+    /**
+     * This hook was called when file in repo is equal with local file
+     * 
+     * @var callable|bool 
+     */
+    public $hookFileIsEqual = false;
+
+    /**
+     * This hook is the same as $fnConflict
+     * @see GitRepoWalk::fnHookDefault
+     * 
+     * @var callable|bool 
+     */
+    public $hookFileIsDiff = false;
+
+    /**
+     * This hook was called when subdir have in repo but local not found
+     * 
+     * @var callable|bool 
+     */
+    public $hookNoLocalPath = false;
+
+    /**
+     * This hook was called when subdir from repo present in local path
+     * 
+     * @var callable|bool 
+     */
+    public $hookHaveLocalPath = false;
+    
+    /**
+     * list of hooks for 
+     * @see GitRepoWalk::fnHookDefault
+     * 
+     * @var array
+     */
     public $walkHookNames = [
         'hookFileSave',
         'hookFileLocalNotFound',
@@ -50,6 +184,11 @@ class GitRepoWalk {
         'hookHaveLocalPath'
     ];
     
+    /**
+     * list of properties that interesting to get from each repository-info
+     * 
+     * @var array
+     */
     public $interestingRepoPars = [
         'id',
         'name',
@@ -71,10 +210,35 @@ class GitRepoWalk {
         'default_branch'
     ];
     
+    /**
+     * Counter of files that are have locally and in a remote repository
+     * but content of files are different
+     * 
+     * @var integer
+     */
     public $cntConflicts = 0;
+    
+    /**
+     * Counter of git-path that have in git-repository but have not local
+     * 
+     * @var integer
+     */
     public $cntNotFound = 0;
+    
+    /**
+     * Counter of git-path that have in local and remote repositories
+     * 
+     * @var integer
+     */
     public $cntFoundObj = 0;
     
+    /**
+     * Constructior.
+     * 
+     * @param string|null $local_path
+     * @param string|null $git_user_and_repo
+     * @param string|null $default_git_branch
+     */
     public function __construct(
         $local_path = NULL, //local path for work with repository (set as default)
         $git_user_and_repo = NULL, //user/repo, for example: ierusalim/git-repo-walk
@@ -136,6 +300,7 @@ class GitRepoWalk {
         $this->userRepoCheckMask($git_user, $git_repo, 3); //user and repo required
         return $git_user . '/' . $git_repo;
     }
+    
     private function userRepoCheckMask(&$git_user, &$git_repo, $require_mask=3) {
         //check git_user and git_repo by require_mask and modify if need
         //if required value is NULL try to get default value
