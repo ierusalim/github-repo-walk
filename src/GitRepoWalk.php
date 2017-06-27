@@ -8,7 +8,7 @@
  * @package    ierusalim\GitRepoWalk
  * @author     Alexander Jer <alex@ierusalim.com>
  * @copyright  2017, Ierusalim
- * @license    http://lunr.nl/LICENSE MIT License
+ * @license    MIT
  */
 
 namespace ierusalim\GitRepoWalk;
@@ -269,6 +269,15 @@ class GitRepoWalk {
             }
         }
     }
+    
+    /**
+     * Divide user/repo string pair to $git_user, $git_repo vars
+     * return array with 2 keys [git_user] and [git_repo]
+     * 
+     * @param string|null $git_user_and_repo
+     * @param integer $require_mask
+     * @return array ($git_user,$git_repo)
+     */
     private function userRepoPairDivide(
         $git_user_and_repo, // 'user/repo' in string
         $require_mask = 0 // 1-user required, 2-repo required, 3 user and repo.
@@ -292,20 +301,39 @@ class GitRepoWalk {
         $this->userRepoCheckMask($git_user, $git_repo, $require_mask);
         return compact('git_user','git_repo');
     }
+    
+    /**
+     * Bind and return user/repo pair from specified $git_user and $git_name
+     * if any value is not specified, use default values
+     * if default values are also not specified, throw exception.
+     * 
+     * Function reverse for user_repo_pair_divide
+     * 
+     * @param string|null $git_user
+     * @param string|null $git_repo
+     * @return string user/repo pair
+     */
     private function userRepoPairBind(
         $git_user = NULL,
         $git_repo = NULL
     ) {
-        //Function reverse for user_repo_pair_divide, return user/repo string pair
+        //
         $this->userRepoCheckMask($git_user, $git_repo, 3); //user and repo required
         return $git_user . '/' . $git_repo;
     }
     
+    /**
+     * Check git_user and git_repo by require_mask and modify if need
+     * if required value is NULL try to get default value
+     * if required value is NULL and default value is NULL throw exception
+     * $require_mask = 1-user required, 2-repo required, 3-user and repo req.
+     * 
+     * @param string|null $git_user (may be changes by ref)
+     * @param string|null $git_repo (may be changes by ref)
+     * @param integer $require_mask
+     * @throws \Exception
+     */
     private function userRepoCheckMask(&$git_user, &$git_repo, $require_mask=3) {
-        //check git_user and git_repo by require_mask and modify if need
-        //if required value is NULL try to get default value
-        //if required value is NULL and default value is NULL throw exception
-        //$require_mask = 1-user required, 2-repo required, 3-user and repo req.
         if(($require_mask & 1) && is_null($git_user)) { //if user required
             $git_user = $this->defaultGitUser;
             if(is_null($git_user)) {
@@ -319,6 +347,13 @@ class GitRepoWalk {
             }
         }
     }
+    
+    /**
+     * Set default values for git_user and git_repo
+     * 
+     * @param string|null $git_user_and_repo
+     * @return array ([git_user],[git_repo])
+     */
     public function setDefaultUserAndRepo($git_user_and_repo = NULL)
     {
         //divide $git_user_and_repo to $git_user and $git_repo
@@ -327,30 +362,64 @@ class GitRepoWalk {
         $this->defaultGitRepo = empty($git_repo) ? NULL : $git_repo;
         return compact('git_user', 'git_repo');
     }
+    
+    /**
+     * Set default value for git_branch
+     * 
+     * @param string|null $git_branch
+     */
     public function setDefaultBranch($git_branch = NULL) {
         $this->defaultGitBranch = $git_branch;
     }
+    
+    /**
+     * Set current branch name for specified repository
+     * 
+     * @param string $git_user_and_repo
+     * @param string|null $git_branch
+     */
     public function setCurrentBranchForRepo($git_user_and_repo, $git_branch = NULL) {
         extract($this->userRepoPairDivide($git_user_and_repo), 3);
         $pair_low = \strtolower($git_user . '/' .$git_repo);
         $this->repoCurrentBranch[$pair_low] = $git_branch;
     }
+    
+    /**
+     * Set default local path for using when need local path but unspecified
+     * 
+     * @param string|null $local_path
+     */
     public function setDefaultLocalPath($local_path = NULL) {
         $this->defaultLocalPath = empty($local_path) ?
             NULL : $this->pathDs($local_path);
     }
+    
+    /**
+     * Set Local Path for specified repository
+     * 
+     * @param string $git_user_and_repo
+     * @param string $local_path
+     */    
     public function setLocalPathForRepo($git_user_and_repo, $local_path) {
         extract($this->userRepoPairDivide($git_user_and_repo, 3));
         $pair_low = \strtolower($git_user . '/' .$git_repo);
         $this->localRepoPathArr[$pair_low] = $this->pathDs($local_path);
     }
 
+    /**
+     * Set hooks for write-enable mode
+     */
     public function writeEnable() {
         $this->writeDisable(); //for clear/initialize all hooks
         //set callable functions for mkdir and file_put_contents
         $this->fnMkDir = array($this, 'checkDirMkDir');
         $this->fnFilePutContents = 'file_put_contents';
     }
+    
+    /**
+     * Set hooks for overwrite-mode
+     * This means that local files will be replaced by files from the repository
+     */
     public function writeEnableOverwrite() {
         $this->writeDisable(); //for clear/initialize all hooks
         $this->writeEnable();
@@ -360,6 +429,10 @@ class GitRepoWalk {
             return true; //true = write file
         };
     }
+    
+    /**
+     * Clear all hooks to init-state, this entails write disable
+     */
     public function writeDisable() {
         foreach($this->walkHookNames as $hookName) {
             $this->{$hookName} = array($this, 'fnHookDefault');
@@ -370,11 +443,25 @@ class GitRepoWalk {
         $this->fnWalkPrepare = false;
         $this->fnWalkFinal = false;
     }
+    
+    /**
+     * Return path with directory separator in end
+     * 
+     * @param string $localRepoPathArr
+     * @return string
+     */
     public function pathDs($localRepoPathArr) {
-        // returned path with directory separator in end
         return \dirname($localRepoPathArr . \DIRECTORY_SEPARATOR . 'a')
             . \DIRECTORY_SEPARATOR;        
     }
+    
+    /**
+     * Return default_branch for specified repository
+     * 
+     * @param string|null $git_user_and_repo
+     * @return string
+     * @throws \Exception
+     */
     public function getDefaultBranchName($git_user_and_repo = NULL) {
         //get $git_user and $git_repo from user/repo pair or from default
         extract($this->userRepoPairDivide($git_user_and_repo, 3));
@@ -404,6 +491,13 @@ class GitRepoWalk {
         return $this->cachedRepositoryInfo[$pair_low]->default_branch;
     }
     
+    
+    /**
+     * @api
+     * @param string|null $git_user_and_repo
+     * @return object
+     * @throws \Exception
+     */
     public function getRepositoryInfo($git_user_and_repo = NULL) {
         extract($this->userRepoPairDivide($git_user_and_repo, 3));
         $pair = $git_user . '/' . $git_repo;
@@ -424,13 +518,18 @@ class GitRepoWalk {
         return $this->cachedRepositoryInfo[$pair_low];
     }
 
+    /**
+     * Function retrieving list of GitHub repositories for specified user
+     * and return array in simple internal format
+     * Side effect: store result array in $this->userRepositoriesArr[git-user]
+     * 
+     * @param string|null $git_user_and_repo
+     * @return array of repositories
+     * @throws \Exception
+     */
     public function getUserRepositoriesList(
         $git_user_and_repo = NULL  // git-user of NULL for use $this->defaultGitUser
     ) {
-        //Function retrieving list of GitHub repositories for specified user
-        //and return array in simple internal format
-        //Side effect: 
-        //  store result array in $this->userRepositoriesArr[git-user]
         extract($this->userRepoPairDivide($git_user_and_repo, 1));
         
         $git_user_low = \strtolower($git_user);
@@ -466,9 +565,15 @@ class GitRepoWalk {
         }
         return $this->userRepositoriesArr[$git_user_low];
     }
-    public function getCurrentBranchName($git_user_and_repo) {
-        //return branch name if it set by setCurrentBranchForRepo
-        // or return default_branch name.
+    
+    /**
+     * Function return branch name if it set by setCurrentBranchForRepo
+     * or return default_branch name
+     * 
+     * @param string|null $git_user_and_repo
+     * @return string
+     */
+    public function getCurrentBranchName($git_user_and_repo = NULL) {
         extract($this->userRepoPairDivide($git_user_and_repo, 3));        
         $pair_low = \strtolower($git_user . '/' . $git_repo);
         if(empty($this->repoCurrentBranch[$pair_low])) {
@@ -477,6 +582,15 @@ class GitRepoWalk {
             return $this->repoCurrentBranch[$pair_low];
         }
     }
+    
+    /**
+     * Function return api-url from wich can get repository files list
+     * 
+     * @param string|null $git_user
+     * @param string|null $git_repo
+     * @param string|null $git_branch
+     * @return string
+     */
     private function gitRepoFilesUrl(
         $git_user = NULL,
         $git_repo = NULL,
@@ -494,6 +608,16 @@ class GitRepoWalk {
             . '?recursive=1'
         ;
     }
+    
+    /**
+     * Retreive and return repository files list by github api
+     * 
+     * @uses GitRepoWalk::gitRepoFilesUrl
+     * @param string|null $git_user_and_repo
+     * @param string|null $git_branch
+     * @return object
+     * @throws \Exception
+     */
     public function getRepoFilesList(
         $git_user_and_repo = NULL,
         $git_branch = NULL     
@@ -518,6 +642,13 @@ class GitRepoWalk {
         return $this->cachedObjsInRepoList;
     }
     
+    /**
+     * Return contacts info (emails, names, roles) from specified repository
+     * 
+     * @uses GitRepoWalk::getBranchesList
+     * @param string|null $git_user_and_repo
+     * @return array of contacts
+     */
     public function getRepositoryContacts($git_user_and_repo = NULL) {
         $branches = $this->getBranchesList($git_user_and_repo);
         $contacts_arr=[];
@@ -540,6 +671,14 @@ class GitRepoWalk {
         }
         return $contacts_arr;
     }
+    
+    /**
+     * Retreive and return branches list from specified repository
+     * 
+     * @param string|null $git_user_and_repo
+     * @return object json_decoded
+     * @throws \Exception
+     */
     public function getBranchesList($git_user_and_repo = NULL) {
         extract($this->userRepoPairDivide($git_user_and_repo, 3));
         $raw_json = $this->httpsGetContents(
@@ -555,6 +694,14 @@ class GitRepoWalk {
         return $branches;    
     }
     
+    /**
+     * Compare local file with file in git-repository
+     * 
+     * @param string $fullPathFileName
+     * @param integer $ExpectedGitSize
+     * @param string $ExpectedGitHash
+     * @return boolean (true if file is equal)
+     */
     function gitLocalFileCompare(
         $fullPathFileName, 
         $ExpectedGitSize,
@@ -573,6 +720,15 @@ class GitRepoWalk {
         return ($localGitHash == $ExpectedGitHash);
     }
 
+    /**
+     * Main work cycle
+     * 
+     * @param string|null $localPath
+     * @param string|null $git_user_and_repo
+     * @param string|null $git_branch
+     * @return array of statistic results
+     * @throws \Exception
+     */
     public function gitRepoWalk(
         $localPath = NULL,
         $git_user_and_repo = NULL,
@@ -717,6 +873,13 @@ class GitRepoWalk {
         return $ret_arr;
     }
 
+    /**
+     * Get content from specified url, using CURL
+     * 
+     * @param string $url
+     * @param string $ua
+     * @return string
+     */
     public function httpsGetContents($url, $ua = 'curl/7.26.0') {
          $ch = \curl_init();
          \curl_setopt($ch, \CURLOPT_URL, $url);
@@ -728,6 +891,13 @@ class GitRepoWalk {
          return $data;
     }
 
+    /**
+     * Get content from specified url, using file_get_contents function
+     * 
+     * @param string $url
+     * @param string $http_opt_arr
+     * @return string
+     */
     public function urlGetContents(
         $url,
         $http_opt_arr = ['user_agent' => 'curl/7.26.0']
@@ -736,6 +906,15 @@ class GitRepoWalk {
             'http' => $http_opt_arr
         ]));
     }
+    
+    /**
+     * Make url by wich to get content of specified file from git-repository
+     * 
+     * @param string $git_fileName
+     * @param string|null $git_user_and_repo
+     * @param string|null $git_branch
+     * @return string
+     */
     public function gitRAWfileUrl(
         $git_fileName, 
         $git_user_and_repo = NULL,
@@ -750,6 +929,16 @@ class GitRepoWalk {
             . $git_branch . '/'
             . $git_fileName;
     }
+    
+    /**
+     * Download and return content of specified file from git-repository
+     * 
+     * @uses GitRepoWalk::gitRAWfileUrl
+     * @param string $git_fileName
+     * @param string|null $git_user_and_repo
+     * @param string|null $git_branch
+     * @return string file content
+     */
     public function gitRAWfileDownload(
         $git_fileName,
         $git_user_and_repo = NULL,
@@ -758,11 +947,18 @@ class GitRepoWalk {
         $srcURL = $this->gitRAWfileUrl($git_fileName, $git_user_and_repo, $git_branch);
         return $this->httpsGetContents($srcURL);
     }
+    
+    /**
+     * Download content of specified file from git-repository using api.github
+     * ATTN: this function not recomended for download files,
+     * because api.github.com have rate-limit 60req/hour.
+     * Better use gitRAWfileDownload function
+     * 
+     * @param string $srcURL
+     * @return string file content
+     */
     public function gitAPIfileDownload($srcURL)
     {
-        //ATTN: this function not recomended for download files,
-        // because api.github.com have rate-limit 60req/hour.
-        // Better use gitRAWfileDownload function
        $api_content = $this->httpsGetContents($srcURL);
        if(!$api_content) return false;
        $api_content = \json_decode($api_content);
@@ -770,6 +966,11 @@ class GitRepoWalk {
        return \base64_decode($api_content->content);
     }
     
+    /**
+     * This function set as for hooks listed in walkHookNames property
+     * 
+     * @param array $par_arr
+     */
     public function fnHookDefault($par_arr) {
         \extract($par_arr);
         //$hookName,
@@ -822,6 +1023,13 @@ class GitRepoWalk {
         }
    }
 
+   /**
+    * MkDir with all subfolders
+    * 
+    * @param string $fullPath
+    * @param string $srcDS
+    * @return boolean true if successful
+    */
    public function checkDirMkDir($fullPath, $srcDS = DIRECTORY_SEPARATOR) {
        //Checking path existence and create if not found
        $path_arr = \explode($srcDS, $fullPath);
