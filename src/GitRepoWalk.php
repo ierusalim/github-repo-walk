@@ -1,5 +1,7 @@
 <?php
 
+namespace ierusalim\GitRepoWalk;
+
 /**
  * This file contains a GitHub Repository Walker Class
  * 
@@ -10,9 +12,6 @@
  * @copyright  2017, Ierusalim
  * @license    MIT
  */
-
-namespace ierusalim\GitRepoWalk;
-
 class GitRepoWalk {
     /**
      * Default git-user name, used when git-user not specified
