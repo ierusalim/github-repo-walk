@@ -232,6 +232,24 @@ class GitRepoWalk {
     public $cntFoundObj = 0;
     
     /**
+     * api.github.com rate limit (60 per hour)
+     * @var integer
+     */
+    public $xRateLimit;
+    
+    /**
+     * api.github.com report how many requests can send before x-RateLimit-Reset
+     * @var integer
+     */
+    public $xRateRemaining;
+    
+    /**
+     * api.github.com report unixtime when rate-limit counter will be resetting
+     * @var integer
+     */
+    public $xRateReset;
+    
+    /**
      * Constructior.
      * 
      * @param string|null $local_path
@@ -854,7 +872,10 @@ class GitRepoWalk {
         $ret_arr = [
           'cntFoundObj'=>$this->cntFoundObj,
           'cntNotFound'=>$this->cntNotFound,
-          'cntConflicts'=>$this->cntConflicts
+          'cntConflicts'=>$this->cntConflicts,
+          'xRateLimit'=>$this->xRateLimit,
+          'xRateRemaining'=>$this->xRateRemaining,
+          'xRateReset'=>$this->xRateReset,
         ];
         if($this->fnWalkFinal) {
             $ret_arr = \call_user_func(
@@ -884,11 +905,33 @@ class GitRepoWalk {
          \curl_setopt($ch, \CURLOPT_URL, $url);
          \curl_setopt($ch, \CURLOPT_USERAGENT, $ua);
          \curl_setopt($ch, \CURLOPT_SSL_VERIFYPEER, false);
+    //     \curl_setopt($ch, \CURLOPT_HEADER, true);
+         \curl_setopt($ch, CURLOPT_HEADERFUNCTION, [$this,'fnCurlHeadersCheck']);
          \curl_setopt($ch, \CURLOPT_RETURNTRANSFER, 1);
          $data = \curl_exec($ch);
          \curl_close($ch);
          return $data;
     }
+    public function fnCurlHeadersCheck($ch, $hstr) {
+        $i=strpos($hstr,': ');
+        if($i) {
+            $h_name = substr($hstr,0,$i);
+            $h_value =trim(substr($hstr,$i+2));
+            switch($h_name) {
+            case 'X-RateLimit-Limit':
+                $this->xRateLimit = $h_value;
+                break;
+            case 'X-RateLimit-Remaining':
+                $this->xRateRemaining = $h_value;
+                break;
+            case 'X-RateLimit-Reset':
+                $this->xRateReset = $h_value;
+                break;
+            }
+        }
+        return strlen($hstr);
+    }
+    
 
     /**
      * Get content from specified url, using file_get_contents function
