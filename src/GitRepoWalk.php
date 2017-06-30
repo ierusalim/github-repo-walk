@@ -786,7 +786,7 @@ class GitRepoWalk {
             $localPath = $this->pathDs($localPath);
         }        
 
-        //set hooks from $this->vars to local vars (for use by "compact")
+        //get hooks from $this->vars to local vars (for use by "compact")
         $fnFilePutContents = $this->fnFilePutContents;
         $fnMkDir = $this->fnMkDir;
         $fnConflict = $this->fnConflict;
@@ -812,8 +812,8 @@ class GitRepoWalk {
         foreach($git_repo_obj->tree as $git_fo) {
             $gitPath = $git_fo->path;
             if(
-                is_callable($this->fnGitPathFilter) &&
-                \call_user_func($this->fnGitPathFilter,$git_fo)
+                \is_callable($this->fnGitPathFilter) &&
+                \call_user_func($this->fnGitPathFilter, $git_fo)
               ) continue;
             //convert / to local DS
             $localFile = \implode(\DIRECTORY_SEPARATOR, \explode('/',$gitPath));
@@ -875,7 +875,7 @@ class GitRepoWalk {
           'cntConflicts'=>$this->cntConflicts,
           'xRateLimit'=>$this->xRateLimit,
           'xRateRemaining'=>$this->xRateRemaining,
-          'xRateReset'=>$this->xRateReset,
+          'xRateResetInSec'=>($this->xRateReset-time()),
         ];
         if($this->fnWalkFinal) {
             $ret_arr = \call_user_func(
@@ -905,7 +905,6 @@ class GitRepoWalk {
          \curl_setopt($ch, \CURLOPT_URL, $url);
          \curl_setopt($ch, \CURLOPT_USERAGENT, $ua);
          \curl_setopt($ch, \CURLOPT_SSL_VERIFYPEER, false);
-    //     \curl_setopt($ch, \CURLOPT_HEADER, true);
          \curl_setopt($ch, CURLOPT_HEADERFUNCTION, [$this,'fnCurlHeadersCheck']);
          \curl_setopt($ch, \CURLOPT_RETURNTRANSFER, 1);
          $data = \curl_exec($ch);
@@ -916,7 +915,8 @@ class GitRepoWalk {
         $i=strpos($hstr,': ');
         if($i) {
             $h_name = substr($hstr,0,$i);
-            $h_value =trim(substr($hstr,$i+2));
+            $h_value = trim(substr($hstr,$i+2));
+            //api.github gives http-headers about rate-limit parameters
             switch($h_name) {
             case 'X-RateLimit-Limit':
                 $this->xRateLimit = $h_value;
