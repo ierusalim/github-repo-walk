@@ -50,6 +50,17 @@ class GitRepoWalk {
     public $defaultLocalPath;
     
     /**
+     * @var string|null
+     */
+    public $cacheGetContentsPath;
+    
+    /**
+     *
+     * @var integer|null
+     */
+    public $cacheGetContentsSec;
+    
+    /**
      * Can set own local-path for every user/repo pair (pair is a key for array)
      * keys must be lowercase
      * 
@@ -375,8 +386,8 @@ class GitRepoWalk {
     {
         //divide $git_user_and_repo to $git_user and $git_repo
         extract($this->userRepoPairDivide($git_user_and_repo), 0);
-        $this->defaultGitUser = empty($git_user) ? NULL : $git_user;
-        $this->defaultGitRepo = empty($git_repo) ? NULL : $git_repo;
+        $this->defaultGitUser = $git_user;
+        $this->defaultGitRepo = $git_repo;
         return compact('git_user', 'git_repo');
     }
     
@@ -520,7 +531,7 @@ class GitRepoWalk {
         $pair = $git_user . '/' . $git_repo;
         $pair_low = strtolower($pair);
         if(!isset($this->cachedRepositoryInfo[$pair_low])) {
-            $raw_json = $this->httpsGetContents(
+            $raw_json = $this->httpsGetContentsOrCache(
                 'https://api.github.com/repos/' . $pair
             );
             if(!$raw_json) return false;
@@ -556,7 +567,7 @@ class GitRepoWalk {
         ) { // not found
             // retreive repositories list via api
             $srcURL = 'https://api.github.com/users/' . $git_user . '/repos';
-            $raw_json = $this->httpsGetContents($srcURL);
+            $raw_json = $this->httpsGetContentsOrCache($srcURL);
             if(!$raw_json) {
                 throw new \Exception("Data not received from $srcURL", 500);
             }
@@ -645,7 +656,7 @@ class GitRepoWalk {
             !isset($this->cachedObjsInRepoList->from_url) ||
             $this->cachedObjsInRepoList->from_url != $srcURL
         ) {
-            $raw_json = $this->httpsGetContents($srcURL);
+            $raw_json = $this->httpsGetContentsOrCache($srcURL);
             if(!$raw_json) return false;
             $this->cachedObjsInRepoList = json_decode($raw_json);
             $this->cachedObjsInRepoList->from_url = $srcURL;
@@ -670,7 +681,7 @@ class GitRepoWalk {
         $branches = $this->getBranchesList($git_user_and_repo);
         $contacts_arr=[];
         foreach($branches as $branch) {
-            $obj = json_decode($this->httpsGetContents($branch->object->url));
+            $obj = json_decode($this->httpsGetContentsOrCache($branch->object->url));
             foreach(['author','committer'] as $key) {
                 if(!isset($obj->{$key})) continue;
                 $email = $obj->{$key}->email;
@@ -698,7 +709,7 @@ class GitRepoWalk {
      */
     public function getBranchesList($git_user_and_repo = NULL) {
         extract($this->userRepoPairDivide($git_user_and_repo, 3));
-        $raw_json = $this->httpsGetContents(
+        $raw_json = $this->httpsGetContentsOrCache(
             'https://api.github.com/repos/'
             . $this->userRepoPairBind($git_user, $git_repo)
             . '/git/refs/heads/'
@@ -875,7 +886,7 @@ class GitRepoWalk {
           'cntConflicts'=>$this->cntConflicts,
           'xRateLimit'=>$this->xRateLimit,
           'xRateRemaining'=>$this->xRateRemaining,
-          'xRateResetInSec'=>($this->xRateReset-time()),
+          'xRateResetInSec'=>($this->xRateLimit)?($this->xRateReset-time()):'',
         ];
         if($this->fnWalkFinal) {
             $ret_arr = \call_user_func(
@@ -893,6 +904,51 @@ class GitRepoWalk {
         return $ret_arr;
     }
 
+    /**
+     * Activate cache for  httpsGetContentsOrCache($url) function.
+     * 
+     * @param string $local_path
+     * @param integer|null $time_to_live_sec
+     * @throws \Exception
+     */
+    public function cacheGetContentsActivate($local_path, $time_to_live_sec=3600) {
+        if(!is_dir($local_path)) {
+            throw new \Exception("Not found path for cache $local_path");
+        }
+        $local_path = $this->pathDs($local_path);
+        $this->cacheGetContentsPath = $local_path;
+        $this->cacheGetContentsSec = $time_to_live_sec;
+    }
+    /**
+     * Caching data in local folder $this->cacheGetContentsPath
+     * do not send new request if have cached data.
+     * time to live cached data is $this->cacheGetContentsSec seconds.
+     * 
+     * @param srting $url
+     * @return string
+     */
+    public function httpsGetContentsOrCache($url) {
+        if($this->cacheGetContentsPath) {
+            $cache_file = $this->cacheGetContentsPath . md5($url) .'.json';
+        	$filemtime = @filemtime($cache_file);  // returns FALSE if no file
+            if ($filemtime) {
+                //if cached, check time-limit
+                if (time() - $filemtime >= $this->cacheGetContentsSec) {
+                    //if expired
+                    $filemtime=false;
+                }
+            }
+            if ($filemtime) { // have data in cache
+                $data = file_get_contents($cache_file);
+                return $data;
+            }
+        }
+        $data = $this->httpsGetContents($url);
+        if(!empty($cache_file) && $data) {
+            file_put_contents($cache_file, $data);
+        }
+        return $data;
+    }
     /**
      * Get content from specified url, using CURL
      * 
