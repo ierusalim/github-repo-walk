@@ -994,38 +994,19 @@ class GitRepoWalk {
      * @param srting $url
      * @return string
      */
-    public function httpsGetContentsOrCache($url, $tive_to_live = NULL) {
+    public function httpsGetContentsOrCache($url, $time_to_live = NULL) {
         if($this->cacheGetContentsPath) {
             $cache_file = $this->httpsGetContentsCacheFile($url);
             if(is_null($time_to_live) && isset($this->cacheDefaultTimeLiveSec)) {
                 $time_to_live = $this->cacheDefaultTimeLiveSec;
-            } else {
-                $time_to_live = 3600;
             }
             $data = $this->cacheTryGetFile($cache_file, $time_to_live);
             if($data !== false) return $data;
-            /*
-        	$filemtime = @filemtime($cache_file);  // returns FALSE if no file
-            if ($filemtime) {
-                //if cached, check time-limit
-                if (time() - $filemtime >= $this->cacheGetContentsSec) {
-                    //if expired
-                    $filemtime=false;
-                }
-            }
-            if ($filemtime) { // have data in cache
-                $data = file_get_contents($cache_file);
-                return $data;
-            }
-             */
         }
         $data = $this->httpsGetContents($url);
-        $this->cacheTryPutFile($cache_file, $data);
-        /*
         if(!empty($cache_file) && !empty($data)) {
             file_put_contents($cache_file, $data);
         }
-         */
         return $data;
     }
     /**
