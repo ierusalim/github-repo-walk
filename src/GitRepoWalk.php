@@ -180,6 +180,13 @@ class GitRepoWalk {
     public $hookHaveLocalPath = false;
     
     /**
+     * This hook was called at the beginning of the function httpsGetContents
+     * 
+     * @var callable|bool 
+     */
+    public $hookHttpsGetContents = false;
+    
+    /**
      * list of hooks for 
      * @see GitRepoWalk::fnHookDefault
      * 
@@ -537,12 +544,12 @@ class GitRepoWalk {
         $pair = $git_user . '/' . $git_repo;
         $pair_low = strtolower($pair);
         if(!isset($this->cachedRepositoryInfo[$pair_low])) {
-            $raw_json = $this->httpsGetContentsOrCache(
+            $ret_obj = $this->jsonGetHttpsOrCache(
                 'https://api.github.com/repos/' . $pair
             );
-            if(!$raw_json) return false;
+            if(!$ret_obj) return false;
 
-            $this->cachedRepositoryInfo[$pair_low] = $ret_obj = json_decode($raw_json);
+            $this->cachedRepositoryInfo[$pair_low] = $ret_obj;
 
             if(isset($ret_obj->message)) {
                 throw new \Exception(
@@ -555,7 +562,8 @@ class GitRepoWalk {
     /**
      * Function retrieving list of GitHub repositories for specified user
      * and return array in simple internal format
-     * Side effect: store result array in $this->userRepositoriesArr[git-user]
+     * api.github return max. 30 repositories per page
+     * $page_n 
      * 
      * @param string|null $git_user_and_repo
      * @return array of repositories
@@ -583,8 +591,8 @@ class GitRepoWalk {
                     $link_head = $this->cacheTryGetFile($header_link_cache_file);
                     if(!empty($link_head)) {
                         $pagin_arr = $this->parseHttpHeadLink($link_head);
-                        if(is_array($pagin_arr)) extract($pagin_arr);
                         //$total_pages , $base_url, $paginator
+                        if(is_array($pagin_arr)) extract($pagin_arr);
                     }
                 }
                 
@@ -598,8 +606,8 @@ class GitRepoWalk {
                     $srcURL = $base_url . $paginator . $curr_page;
                 }
                 $this->httpHeaderLink=false;
-                $raw_json = $this->httpsGetContentsOrCache($srcURL);
-                if(!$raw_json) {
+                $results_obj = $this->jsonGetHttpsOrCache($srcURL);
+                if(!$results_obj) {
                     throw new \Exception("Data not received from $srcURL", 500);
                 }
                 //if have HeaderLink, put to file
@@ -609,8 +617,6 @@ class GitRepoWalk {
                     if(is_array($pagin_arr)) extract($pagin_arr);
                 }
 
-                //decode answer and store in cache
-                $results_obj = json_decode($raw_json);
                 //errors checking
                 if(isset($results_obj->message)) {
                     throw new \Exception(
@@ -618,6 +624,11 @@ class GitRepoWalk {
                         . $results_obj->message, 501);
                 }
                 //get only interesting data
+                $is_iterable=0;
+                foreach($results_obj as $repo_obj) { $is_iterable = 1; }
+                if(!$is_iterable) {
+                    echo "Need debugging\n"; var_dump($results_obj);
+                }
                 foreach($results_obj as $repo_obj) {
                     $iter_obj=[];
                     foreach($this->interestingRepoPars as $repoPar) {
@@ -722,9 +733,9 @@ class GitRepoWalk {
             !isset($this->cachedObjsInRepoList->from_url) ||
             $this->cachedObjsInRepoList->from_url != $srcURL
         ) {
-            $raw_json = $this->httpsGetContentsOrCache($srcURL);
-            if(!$raw_json) return false;
-            $this->cachedObjsInRepoList = json_decode($raw_json);
+            $json_obj = $this->jsonGetHttpsOrCache($srcURL);
+            if(!$json_obj) return false;
+            $this->cachedObjsInRepoList = $json_obj;
             $this->cachedObjsInRepoList->from_url = $srcURL;
             if(!isset($this->cachedObjsInRepoList->sha)) {
                  throw new \Exception(
@@ -747,13 +758,13 @@ class GitRepoWalk {
         $branches = $this->getBranchesList($git_user_and_repo);
         $contacts_arr=[];
         foreach($branches as $branch) {
-            $obj = json_decode($this->httpsGetContentsOrCache($branch->object->url));
+            $json_obj = $this->jsonGetHttpsOrCache($branch->object->url);
             foreach(['author','committer'] as $key) {
-                if(!isset($obj->{$key})) continue;
-                $email = $obj->{$key}->email;
+                if(!isset($json_obj->{$key})) continue;
+                $email = $json_obj->{$key}->email;
                 if($email == 'noreply@github.com') continue;
                 $contact = [
-                    'name'=>$obj->{$key}->name,
+                    'name'=>$json_obj->{$key}->name,
                     'role'=>$git_user_and_repo.'#'.$key
                 ];
                 if(isset($contacts_arr[$email])) {
@@ -776,13 +787,12 @@ class GitRepoWalk {
      */
     public function getBranchesList($git_user_and_repo = NULL) {
         extract($this->userRepoPairDivide($git_user_and_repo, 3));
-        $raw_json = $this->httpsGetContentsOrCache(
+        $branches =  $this->jsonGetHttpsOrCache(
             'https://api.github.com/repos/'
             . $this->userRepoPairBind($git_user, $git_repo)
             . '/git/refs/heads/'
         );
-        if(!$raw_json) return false;
-        $branches = json_decode($raw_json);
+        if(!$branches) return false;
         if(isset($branches->message)) {
             throw new \Exception("ERROR:" . $branches->message, 404);
         }
@@ -994,20 +1004,30 @@ class GitRepoWalk {
      * @param srting $url
      * @return string
      */
-    public function httpsGetContentsOrCache($url, $time_to_live = NULL) {
+    public function jsonGetHttpsOrCache($url, $time_to_live = NULL, $assoc=false) {
         if($this->cacheGetContentsPath) {
             $cache_file = $this->httpsGetContentsCacheFile($url);
             if(is_null($time_to_live) && isset($this->cacheDefaultTimeLiveSec)) {
                 $time_to_live = $this->cacheDefaultTimeLiveSec;
             }
             $data = $this->cacheTryGetFile($cache_file, $time_to_live);
-            if($data !== false) return $data;
+            if($data !== false) {
+                $json_data = json_decode($data, $assoc);
+                if(is_null($json_data)) {
+                    @unlink($cache_file);
+                } else {
+                    return $json_data;
+                }
+            }
+        } else {
+            $cache_file = false;
         }
         $data = $this->httpsGetContents($url);
+        $json_data = json_decode($data, $assoc);
         if(!empty($cache_file) && !empty($data)) {
             file_put_contents($cache_file, $data);
         }
-        return $data;
+        return $json_data;
     }
     /**
      * Try to get and return data from cache-file
@@ -1067,6 +1087,13 @@ class GitRepoWalk {
      * @return string
      */
     public function httpsGetContents($url, $ua = 'curl/7.26.0') {
+        if(is_callable($this->hookHttpsGetContents)) {
+            $data = call_user_func(
+                $this->hookHttpsGetContents,
+                compact('url', 'cache_file', 'time_to_live')
+            );
+            if(!empty($data)) return $data;
+        }
          $ch = \curl_init();
          \curl_setopt($ch, \CURLOPT_URL, $url);
          \curl_setopt($ch, \CURLOPT_USERAGENT, $ua);
@@ -1100,7 +1127,11 @@ class GitRepoWalk {
         }
         return strlen($hstr);
     }
-    
+    public function isRateLimitExceeded() {
+        if(empty($this->xRateLimit)) return false;
+        if($this->xRateRemaining>1) return false;
+        return true;
+    }
 
     /**
      * Get content from specified url, using file_get_contents function
