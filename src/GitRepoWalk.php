@@ -261,6 +261,12 @@ class GitRepoWalk {
     public $xRateReset;
     
     /**
+     * api.github.com report max.pages in link-header
+     * @var string
+     */
+    public $httpHeaderLink;
+    
+    /**
      * Constructior.
      * 
      * @param string|null $local_path
@@ -306,7 +312,7 @@ class GitRepoWalk {
      * @param integer $require_mask
      * @return array ($git_user,$git_repo)
      */
-    private function userRepoPairDivide(
+    protected function userRepoPairDivide(
         $git_user_and_repo, // 'user/repo' in string
         $require_mask = 0 // 1-user required, 2-repo required, 3 user and repo.
     ) {
@@ -341,7 +347,7 @@ class GitRepoWalk {
      * @param string|null $git_repo
      * @return string user/repo pair
      */
-    private function userRepoPairBind(
+    protected function userRepoPairBind(
         $git_user = NULL,
         $git_repo = NULL
     ) {
@@ -556,37 +562,71 @@ class GitRepoWalk {
      * @throws \Exception
      */
     public function getUserRepositoriesList(
-        $git_user_and_repo = NULL  // git-user of NULL for use $this->defaultGitUser
+        $git_user_and_repo = NULL,  // git-user of NULL for use $this->defaultGitUser
+        $page_n = false  //page number (api return 30 repositories per page)
     ) {
         extract($this->userRepoPairDivide($git_user_and_repo, 1));
         
         $git_user_low = \strtolower($git_user);
+        $header_link_cache_file=$this->httpsGetContentsCacheFile($git_user_low);
         
         if( // looking for cached data
             !isset($this->userRepositoriesArr[$git_user_low])
-        ) { // not found
-            // retreive repositories list via api
-            $srcURL = 'https://api.github.com/users/' . $git_user . '/repos';
-            $raw_json = $this->httpsGetContentsOrCache($srcURL);
-            if(!$raw_json) {
-                throw new \Exception("Data not received from $srcURL", 500);
-            }
-            //decode answer and store in cache
-            $results_obj = json_decode($raw_json);
-            //errors checking
-            if(isset($results_obj->message)) {
-                throw new \Exception(
-                    "ERROR on git_user_repositories_list($git_user): "
-                    . $results_obj->message, 501);
-            }
-            //get only interesting data
+        ) {
+            //if no data in memory cache
             $repo_arr=[];
-            foreach($results_obj as $repo_obj) {
-                $iter_obj=[];
-                foreach($this->interestingRepoPars as $repoPar) {
-                    $inter_obj[$repoPar] = $repo_obj->{$repoPar};
+            $curr_page = ($page_n) ? $page_n : 1;
+            $total_pages = 1;
+            while($curr_page<=$total_pages) {
+                //if pagin_arr unknown, try to get from $header_link_cache_file
+                if(empty($pagin_arr) && !empty($header_link_cache_file)) {
+                    $link_head = $this->cacheTryGetFile($header_link_cache_file);
+                    if(!empty($link_head)) {
+                        $pagin_arr = $this->parseHttpHeadLink($link_head);
+                        if(is_array($pagin_arr)) extract($pagin_arr);
+                        //$total_pages , $base_url, $paginator
+                    }
                 }
-                $repo_arr[\strtolower($repo_obj->name)] = $inter_obj;
+                
+                //get first page or other pages
+                if($curr_page == 1) {
+                    $srcURL = 'https://api.github.com/users/' . $git_user . '/repos';
+                } else {
+                    if(empty($pagin_arr)) {
+                        throw new \Exception("ERROR unknown pagination", 800);
+                    }
+                    $srcURL = $base_url . $paginator . $curr_page;
+                }
+                $this->httpHeaderLink=false;
+                $raw_json = $this->httpsGetContentsOrCache($srcURL);
+                if(!$raw_json) {
+                    throw new \Exception("Data not received from $srcURL", 500);
+                }
+                //if have HeaderLink, put to file
+                if($this->httpHeaderLink) {
+                    $this->cacheTryPutFile($header_link_cache_file, $this->httpHeaderLink);
+                    $pagin_arr = $this->parseHttpHeadLink($this->httpHeaderLink);
+                    if(is_array($pagin_arr)) extract($pagin_arr);
+                }
+
+                //decode answer and store in cache
+                $results_obj = json_decode($raw_json);
+                //errors checking
+                if(isset($results_obj->message)) {
+                    throw new \Exception(
+                        "ERROR on git_user_repositories_list($git_user): "
+                        . $results_obj->message, 501);
+                }
+                //get only interesting data
+                foreach($results_obj as $repo_obj) {
+                    $iter_obj=[];
+                    foreach($this->interestingRepoPars as $repoPar) {
+                        $inter_obj[$repoPar] = $repo_obj->{$repoPar};
+                    }
+                    $repo_arr[\strtolower($repo_obj->name)] = $inter_obj;
+                }
+                if($page_n) break;
+                $curr_page++;
             }
             //cache answer
             $this->userRepositoriesArr[$git_user_low] = $repo_arr;
@@ -612,6 +652,32 @@ class GitRepoWalk {
     }
     
     /**
+     * Return array [total_pages, base_url, paginator] or false if bad data
+     * @param string $pagin
+     * @return array|boolean
+     */
+    public function parseHttpHeadLink($pagin) {
+        //How many pages?
+        $i=strpos($pagin,'>; rel="last');
+        if($i>9) {
+            $addit = 0;
+        } else {
+            $i=strpos($pagin,'>; rel="prev');
+            if($i>9) $addit = 1; else return false;
+        }
+        $tp = explode('=',substr($pagin,$i-7,7));
+        if(empty($tp[1]) || !is_numeric($tp[1])) return false;
+        $tp = $tp[1]+$addit; //total pages
+        //Cut base-link
+        $i=strpos($pagin,'<http');
+        if($i === false) return false;
+        $j=strpos($pagin,'?',$i);
+        if($j === false) return false;
+        $base=substr($pagin,$i+1,$j-$i-1);
+        return ['total_pages'=>$tp,'base_url'=>$base,'paginator'=>'?page='];
+    }
+    
+    /**
      * Function return api-url from wich can get repository files list
      * 
      * @param string|null $git_user
@@ -619,7 +685,7 @@ class GitRepoWalk {
      * @param string|null $git_branch
      * @return string
      */
-    private function gitRepoFilesUrl(
+    protected function gitRepoFilesUrl(
         $git_user = NULL,
         $git_repo = NULL,
         $git_branch = NULL
@@ -685,6 +751,7 @@ class GitRepoWalk {
             foreach(['author','committer'] as $key) {
                 if(!isset($obj->{$key})) continue;
                 $email = $obj->{$key}->email;
+                if($email == 'noreply@github.com') continue;
                 $contact = [
                     'name'=>$obj->{$key}->name,
                     'role'=>$git_user_and_repo.'#'.$key
@@ -927,9 +994,13 @@ class GitRepoWalk {
      * @param srting $url
      * @return string
      */
-    public function httpsGetContentsOrCache($url) {
+    public function httpsGetContentsOrCache($url, $tive_to_live = NULL) {
         if($this->cacheGetContentsPath) {
-            $cache_file = $this->cacheGetContentsPath . md5($url) .'.json';
+            $cache_file = $this->httpsGetContentsCacheFile($url);
+            if(is_null($time_to_live)) $time_to_live = $this->cacheGetContentsSec;
+            $data = $this->cacheTryGetFile($cache_file, $time_to_live);
+            if($data !== false) return $data;
+            /*
         	$filemtime = @filemtime($cache_file);  // returns FALSE if no file
             if ($filemtime) {
                 //if cached, check time-limit
@@ -942,13 +1013,67 @@ class GitRepoWalk {
                 $data = file_get_contents($cache_file);
                 return $data;
             }
+             */
         }
         $data = $this->httpsGetContents($url);
-        if(!empty($cache_file) && $data) {
+        $this->cacheTryPutFile($cache_file, $data);
+        /*
+        if(!empty($cache_file) && !empty($data)) {
             file_put_contents($cache_file, $data);
         }
+         */
         return $data;
     }
+    /**
+     * Try to get and return data from cache-file
+     * return false if not found or time_to_live expired
+     * 
+     * @param string $cache_file
+     * @param integer|null $time_to_live
+     * @return string|boolean
+     */
+    protected function cacheTryGetFile($cache_file, $time_to_live=3600) {
+        $filemtime = @filemtime($cache_file);  // returns FALSE if no file
+        if (!$filemtime) return false;
+        //if cached, check time-limit
+        if (time() - $filemtime >= $time_to_live) return false;
+        $data = file_get_contents($cache_file);
+        return $data;
+    }
+    /**
+     * Try to put data into cache-file
+     * 
+     * @param string|boolean $cache_file
+     * @param string $data
+     */
+    protected function cacheTryPutFile($cache_file, $data) {
+        if(!empty($cache_file) && !empty($data)) {
+            file_put_contents($cache_file, $data);
+        }
+    }
+    /**
+     * Return cache-file-name for specified $url
+     * 
+     * @param string $url
+     * @return string|boolean
+     */
+    protected function httpsGetContentsCacheFile($url) {
+        if(empty($this->cacheGetContentsPath)) return false;
+        $cache_file = $this->cacheGetContentsPath . md5($url) .'.json';
+        return $cache_file;
+    }
+    /**
+     * Remove cache-file for specified $url, if exist
+     * 
+     * @param string $url
+     */
+    protected function httpsGetContentsCacheRemove($url) {
+        if($this->cacheGetContentsPath) {
+            $cache_file = $this->httpsGetContentsCacheFile($url);
+            @unlink($cache_file);
+        }
+    }
+    
     /**
      * Get content from specified url, using CURL
      * 
@@ -982,6 +1107,9 @@ class GitRepoWalk {
                 break;
             case 'X-RateLimit-Reset':
                 $this->xRateReset = $h_value;
+                break;
+            case 'Link':
+                $this->httpHeaderLink = $h_value;
                 break;
             }
         }
