@@ -58,7 +58,7 @@ class GitRepoWalk {
      *
      * @var integer|null
      */
-    public $cacheGetContentsSec;
+    public $cacheDefaultTimeLiveSec;
     
     /**
      * Can set own local-path for every user/repo pair (pair is a key for array)
@@ -984,7 +984,7 @@ class GitRepoWalk {
         }
         $local_path = $this->pathDs($local_path);
         $this->cacheGetContentsPath = $local_path;
-        $this->cacheGetContentsSec = $time_to_live_sec;
+        $this->cacheDefaultTimeLiveSec = $time_to_live_sec;
     }
     /**
      * Caching data in local folder $this->cacheGetContentsPath
@@ -997,7 +997,11 @@ class GitRepoWalk {
     public function httpsGetContentsOrCache($url, $tive_to_live = NULL) {
         if($this->cacheGetContentsPath) {
             $cache_file = $this->httpsGetContentsCacheFile($url);
-            if(is_null($time_to_live)) $time_to_live = $this->cacheGetContentsSec;
+            if(is_null($time_to_live) && isset($this->cacheDefaultTimeLiveSec)) {
+                $time_to_live = $this->cacheDefaultTimeLiveSec;
+            } else {
+                $time_to_live = 3600;
+            }
             $data = $this->cacheTryGetFile($cache_file, $time_to_live);
             if($data !== false) return $data;
             /*
